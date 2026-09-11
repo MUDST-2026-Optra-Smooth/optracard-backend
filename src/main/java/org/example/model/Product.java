@@ -16,8 +16,15 @@ public class Product{
     @Column(name = "game_id")
     private Integer gameId;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "game_id", insertable = false, updatable = false)
+    private CardGame cardGame;
+
     @Column(name = "pro_name", length = 255)
     private String proName;
+
+    @Column(name = "pro_sku", unique = true, length = 80)
+    private String proSku;
 
     @Column(name = "pro_cost")
     private Double proCost;
@@ -42,4 +49,12 @@ public class Product{
 
     @Column(name = "is_active")
     private Boolean isActive;
+
+    /** OFFICIAL for Optracard-owned stock, MARKETPLACE for an approved seller listing. */
+    @Column(name = "pro_listing_source", nullable = false, length = 20, columnDefinition = "VARCHAR(20) DEFAULT 'OFFICIAL'")
+    private String listingSource = "OFFICIAL";
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "store_id")
+    private MarketplaceStore store;
 }

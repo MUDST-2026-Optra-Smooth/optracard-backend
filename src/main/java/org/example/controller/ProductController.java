@@ -1,8 +1,8 @@
 package org.example.controller;
 
+import org.example.dto.CatalogProductResponse;
 import org.example.model.Product;
 import org.example.service.ProductService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -12,11 +12,19 @@ import java.util.List;
 @CrossOrigin(origins = "*") // อนุญาตให้ Frontend (React) ยิง API เข้ามาได้
 public class ProductController {
 
-    @Autowired
-    private ProductService productService;
+    private final ProductService productService;
+
+    public ProductController(ProductService productService) {
+        this.productService = productService;
+    }
 
     @GetMapping
-    public List<Product> getAllProducts() {
+    public List<CatalogProductResponse> getAllProducts() {
+        return productService.getAllProducts();
+    }
+
+    @GetMapping("/home")
+    public List<CatalogProductResponse> getHomeProducts() {
         return productService.getAllProducts();
     }
 
