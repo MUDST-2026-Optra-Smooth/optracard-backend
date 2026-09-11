@@ -25,6 +25,12 @@ public class User {
     @Column(name = "UA_Email", unique = true, nullable = false)
     private String email;
 
+    @Column(name = "UA_Phone")
+    private String phone;
+
+    @Column(name = "UA_Address")
+    private String address;
+
     @Column(name = "UA_CreateDate", insertable = false, updatable = false)
     private LocalDateTime createDate;
 }
