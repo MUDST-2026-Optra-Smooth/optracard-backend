@@ -5,6 +5,8 @@ import org.example.service.AuthService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -19,9 +21,9 @@ public class AuthController {
     public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
         try {
             authService.register(request);
-            return ResponseEntity.ok("User registered successfully");
+            return ResponseEntity.ok(Map.of("message", "User registered successfully"));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
 
@@ -31,7 +33,7 @@ public class AuthController {
             AuthResponse response = authService.login(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.status(401).body(e.getMessage());
+            return ResponseEntity.status(401).body(Map.of("message", e.getMessage()));
         }
     }
 }
