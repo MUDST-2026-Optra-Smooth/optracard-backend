@@ -1,9 +1,14 @@
 package org.example.controller;
 
-import org.example.model.Cart;
+import org.example.dto.CartResponse;
 import org.example.service.CartService;
+import org.example.model.User;
+import org.example.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,55 +27,76 @@ public class CartController {
     @Autowired
     private CartService cartService;
 
+    @Autowired
+    private UserRepository userRepository;
+
     // 1. Endpoint สำหรับดูตะกร้าของ User 
     // ตัวอย่างการเรียกใช้งาน: GET http://localhost:8080/api/cart/1
     @GetMapping("/{userId}")
-    public ResponseEntity<Cart> getCart(@PathVariable Integer userId) {
-        Cart cart = cartService.getCartByUserId(userId);
-        return ResponseEntity.ok(cart);
+    public ResponseEntity<CartResponse> getCart(@PathVariable Integer userId, Authentication authentication) {
+        Integer currentUserId = authenticatedUserId(authentication, userId);
+        return ResponseEntity.ok(cartService.getCartResponse(currentUserId));
     }
 
     // 2. Endpoint สำหรับเพิ่มสินค้าลงตะกร้า
     // ตัวอย่างการเรียกใช้งาน: POST http://localhost:8080/api/cart/add?userId=1&productId=101&quantity=2
     @PostMapping("/add")
-    public ResponseEntity<Cart> addItemToCart(
+    public ResponseEntity<CartResponse> addItemToCart(
             @RequestParam Integer userId,
             @RequestParam Integer productId,
-            @RequestParam Integer quantity) {
+            @RequestParam Integer quantity,
+            Authentication authentication) {
         
-        Cart updatedCart = cartService.addItemToCart(userId, productId, quantity);
-        return ResponseEntity.ok(updatedCart);
+        Integer currentUserId = authenticatedUserId(authentication, userId);
+        cartService.addItemToCart(currentUserId, productId, quantity);
+        return ResponseEntity.ok(cartService.getCartResponse(currentUserId));
     }
 
     // 3. Endpoint สำหรับอัปเดตจำนวนสินค้า (ใช้ PUT)
     // ตัวอย่าง: PUT http://localhost:8080/api/cart/update?userId=1&productId=1&quantity=5
     @PutMapping("/update")
-    public ResponseEntity<Cart> updateItemQuantity(
+    public ResponseEntity<CartResponse> updateItemQuantity(
             @RequestParam Integer userId,
             @RequestParam Integer productId,
-            @RequestParam Integer quantity) {
+            @RequestParam Integer quantity,
+            Authentication authentication) {
         
-        Cart updatedCart = cartService.updateItemQuantity(userId, productId, quantity);
-        return ResponseEntity.ok(updatedCart);
+        Integer currentUserId = authenticatedUserId(authentication, userId);
+        cartService.updateItemQuantity(currentUserId, productId, quantity);
+        return ResponseEntity.ok(cartService.getCartResponse(currentUserId));
     }
 
     // 4. Endpoint สำหรับลบสินค้าออกจากตะกร้า (ใช้ DELETE)
     // ตัวอย่าง: DELETE http://localhost:8080/api/cart/remove?userId=1&productId=1
     @DeleteMapping("/remove")
-    public ResponseEntity<Cart> removeItem(
+    public ResponseEntity<CartResponse> removeItem(
             @RequestParam Integer userId,
-            @RequestParam Integer productId) {
+            @RequestParam Integer productId,
+            Authentication authentication) {
         
-        Cart updatedCart = cartService.removeItemFromCart(userId, productId);
-        return ResponseEntity.ok(updatedCart);
+        Integer currentUserId = authenticatedUserId(authentication, userId);
+        cartService.removeItemFromCart(currentUserId, productId);
+        return ResponseEntity.ok(cartService.getCartResponse(currentUserId));
     }
 
     // 5. Endpoint สำหรับล้างตะกร้าทั้งหมด (ใช้ DELETE)
     // ตัวอย่าง: DELETE http://localhost:8080/api/cart/clear/1
     @DeleteMapping("/clear/{userId}")
-    public ResponseEntity<Cart> clearCart(@PathVariable Integer userId) {
-        
-        Cart updatedCart = cartService.clearCart(userId);
-        return ResponseEntity.ok(updatedCart);
+    public ResponseEntity<CartResponse> clearCart(@PathVariable Integer userId, Authentication authentication) {
+        Integer currentUserId = authenticatedUserId(authentication, userId);
+        cartService.clearCart(currentUserId);
+        return ResponseEntity.ok(cartService.getCartResponse(currentUserId));
+    }
+
+    private Integer authenticatedUserId(Authentication authentication, Integer requestedId) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Login required");
+        }
+        User user = userRepository.findByEmail(authentication.getName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
+        if (requestedId != null && !requestedId.equals(user.getUaId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only access your own cart");
+        }
+        return user.getUaId();
     }
 }

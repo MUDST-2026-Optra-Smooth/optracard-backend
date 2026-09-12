@@ -22,13 +22,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
     // เก็บข้อมูล Bucket ของแต่ละ IP
     private final Map<String, Bucket> cache = new ConcurrentHashMap<>();
 
-    private Bucket createNewBucket() {
-        //อนุญาต 50 Request ต่อ 1 นาที
+    private Bucket createNewBucket(int capacity) {
         Bandwidth limit = Bandwidth.builder()
-                .capacity(50)
-                .refillGreedy(50, Duration.ofMinutes(1))
+                .capacity(capacity)
+                .refillGreedy(capacity, Duration.ofMinutes(1))
                 .build();
         return Bucket.builder().addLimit(limit).build();
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        // Browser CORS preflight requests are not application requests and
+        // must not consume a visitor's API quota.
+        return "OPTIONS".equalsIgnoreCase(request.getMethod());
     }
 
     @Override
@@ -37,7 +43,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         // ดึง IP Address ของคนที่ยิง Request เข้ามา
         String ip = request.getRemoteAddr();
-        Bucket bucket = cache.computeIfAbsent(ip, k -> createNewBucket());
+        boolean isPublicCatalogRead = "GET".equalsIgnoreCase(request.getMethod())
+                && request.getRequestURI().startsWith("/api/products");
+
+        // The storefront loads the catalog on Home, list, and navigation
+        // pages. Give that read-only public endpoint its own, higher bucket
+        // so ordinary authenticated actions cannot make Home fail with 429.
+        String bucketKey = ip + (isPublicCatalogRead ? ":catalog" : ":api");
+        int capacity = isPublicCatalogRead ? 300 : 50;
+        Bucket bucket = cache.computeIfAbsent(bucketKey, k -> createNewBucket(capacity));
 
         // ตรวจสอบว่าโควต้ายังเหลือหรือไม่
         if (bucket.tryConsume(1)) {
@@ -46,6 +60,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             // โควต้าหมด ส่ง Error 429 Too Many Requests กลับไป
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setContentType("application/json");
+            response.setHeader("Retry-After", "60");
             response.getWriter().write("{\"error\": \"Too many requests. Please try again later.\"}");
         }
     }

@@ -12,13 +12,47 @@ CREATE TABLE Users_Admins (
 CREATE TABLE CardGames (
      Game_ID SERIAL PRIMARY KEY,
      Game_Name VARCHAR(255) NOT NULL,
-     Game_Description TEXT
+     Game_Description TEXT,
+     CONSTRAINT uq_cardgames_game_name UNIQUE (Game_Name)
+);
+
+-- A marketplace store belongs to a customer whose seller application was approved.
+-- Official inventory deliberately has no store record and is identified by
+-- Products.Pro_Listing_Source = 'OFFICIAL'.
+CREATE TABLE Marketplace_Stores (
+     Store_ID SERIAL PRIMARY KEY,
+     Seller_User_ID INT NOT NULL REFERENCES Users_Admins(UA_ID),
+     Store_Name VARCHAR(255) NOT NULL,
+     Store_Slug VARCHAR(100) NOT NULL UNIQUE,
+     Store_Status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+     Store_Description TEXT,
+     Physical_Store BOOLEAN NOT NULL DEFAULT FALSE,
+     Owner_First_Name VARCHAR(255),
+     Owner_Last_Name VARCHAR(255),
+     Owner_Email VARCHAR(255),
+     Owner_Phone VARCHAR(50),
+     Bank_Name VARCHAR(255),
+     Bank_Branch VARCHAR(255),
+     Bank_Account_Name VARCHAR(255),
+     Bank_Account_Number VARCHAR(100),
+     Store_Address TEXT,
+     Province VARCHAR(100),
+     District VARCHAR(100),
+     Subdistrict VARCHAR(100),
+     Postal_Code VARCHAR(20),
+     Store_Profile_Image TEXT,
+     Bank_Passbook_Image TEXT,
+     Terms_Accepted BOOLEAN NOT NULL DEFAULT FALSE,
+     Submitted_At TIMESTAMP,
+     Reviewed_At TIMESTAMP,
+     Review_Note TEXT
 );
 
 CREATE TABLE Products (
      Pro_ID SERIAL PRIMARY KEY,
      Game_ID INT REFERENCES CardGames(Game_ID),
      Pro_Name VARCHAR(255) NOT NULL,
+     Pro_SKU VARCHAR(80) UNIQUE,
      Pro_Cost DECIMAL(10, 2) NOT NULL,
      Pro_PriceOfSell DECIMAL(10, 2) NOT NULL,
      Pro_Quantity INT NOT NULL DEFAULT 0,
@@ -26,7 +60,14 @@ CREATE TABLE Products (
      Pro_ImageURL TEXT,
      Pro_Attributes TEXT,
      Pro_Description TEXT,
-     Is_Active BOOLEAN DEFAULT TRUE
+     Is_Active BOOLEAN DEFAULT TRUE,
+     Pro_Listing_Source VARCHAR(20) NOT NULL DEFAULT 'OFFICIAL'
+         CHECK (Pro_Listing_Source IN ('OFFICIAL', 'MARKETPLACE')),
+     Store_ID INT REFERENCES Marketplace_Stores(Store_ID) ON DELETE SET NULL,
+     CHECK (
+         (Pro_Listing_Source = 'OFFICIAL' AND Store_ID IS NULL)
+         OR (Pro_Listing_Source = 'MARKETPLACE' AND Store_ID IS NOT NULL)
+     )
 );
 
 CREATE TABLE Orders (
@@ -37,7 +78,17 @@ CREATE TABLE Orders (
      Ord_Status VARCHAR(50),
      Ord_ShippingAddress TEXT,
      Ord_TrackingNumber VARCHAR(100),
-     Ord_CreateDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+     Ord_CreateDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+     Ord_Recipient_Name VARCHAR(255),
+     Ord_Recipient_Phone VARCHAR(50),
+     Ord_Shipping_Method VARCHAR(50),
+     Ord_Shipping_Fee DECIMAL(10, 2) NOT NULL DEFAULT 0,
+     Ord_Payment_Status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+     -- Snapshot of the fulfillment seller. Marketplace orders are never
+     -- merged with Official Store orders at checkout.
+     Ord_Store_ID INT,
+     Ord_Store_Name VARCHAR(255),
+     Ord_Source VARCHAR(20) NOT NULL DEFAULT 'OFFICIAL'
 );
 
 CREATE TABLE Carts (
