@@ -7,4 +7,5 @@ import java.util.Optional;
 
 public interface MarketplaceStoreRepository extends JpaRepository<MarketplaceStore, Integer> {
     Optional<MarketplaceStore> findByStoreSlug(String storeSlug);
+    Optional<MarketplaceStore> findFirstBySellerUserIdOrderByStoreIdDesc(Integer sellerUserId);
 }

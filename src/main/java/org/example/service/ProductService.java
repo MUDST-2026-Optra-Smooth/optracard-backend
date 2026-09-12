@@ -26,6 +26,10 @@ public class ProductService {
     public List<CatalogProductResponse> getAllProducts() {
         return productRepository.findByIsActiveTrueOrderByProTypeAscProIdAsc()
                 .stream()
+                // Marketplace inventory is public only after the seller's
+                // store application has been approved.
+                .filter(product -> !"MARKETPLACE".equalsIgnoreCase(product.getListingSource())
+                        || (product.getStore() != null && "APPROVED".equalsIgnoreCase(product.getStore().getStoreStatus())))
                 .map(this::toCatalogResponse)
                 .toList();
     }
