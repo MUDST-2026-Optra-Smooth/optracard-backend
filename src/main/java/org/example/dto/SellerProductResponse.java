@@ -1,16 +1,19 @@
 package org.example.dto;
 
-public record CatalogProductResponse(
+public record SellerProductResponse(
         Integer id,
         String name,
-        String type,
         String game,
+        String type,
+        Double cost,
         Double price,
         Integer stock,
         String imageUrl,
-        String description,
         String productSet,
         String language,
-        String source,
-        CatalogStoreResponse store
+        String description,
+        String approvalStatus,
+        Boolean active,
+        Integer storeId,
+        String storeName
 ) {}

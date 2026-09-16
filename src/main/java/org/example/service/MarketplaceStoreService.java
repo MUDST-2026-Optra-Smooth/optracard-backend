@@ -13,6 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.Locale;
+import java.util.List;
 
 @Service
 public class MarketplaceStoreService {
@@ -88,6 +89,25 @@ public class MarketplaceStoreService {
         store.setReviewedAt(null);
         store.setReviewNote(null);
 
+        return toResponse(storeRepository.saveAndFlush(store));
+    }
+
+    @Transactional
+    public StoreApplicationResponse reviewApplication(Integer storeId, String status, String note) {
+        MarketplaceStore store = storeRepository.findByStoreId(storeId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Store application not found"));
+        String normalized = status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
+        if (!List.of("APPROVED", "REJECTED", "PENDING").contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid store status");
+        }
+        store.setStoreStatus(normalized);
+        store.setReviewedAt("PENDING".equals(normalized) ? null : LocalDateTime.now());
+        store.setReviewNote(trim(note));
+        userRepository.findById(store.getSellerUserId()).ifPresent(user -> {
+            if ("APPROVED".equals(normalized)) user.setRole("SELLER");
+            else if ("REJECTED".equals(normalized) && "SELLER".equalsIgnoreCase(user.getRole())) user.setRole("USER");
+            userRepository.save(user);
+        });
         return toResponse(storeRepository.saveAndFlush(store));
     }
 

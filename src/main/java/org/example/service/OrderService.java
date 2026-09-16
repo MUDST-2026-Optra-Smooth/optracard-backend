@@ -198,7 +198,8 @@ public class OrderService {
     private boolean isPurchasable(Product product) {
         return Boolean.TRUE.equals(product.getIsActive())
                 && (!"MARKETPLACE".equalsIgnoreCase(product.getListingSource())
-                || (product.getStore() != null && "APPROVED".equalsIgnoreCase(product.getStore().getStoreStatus())));
+                || ("APPROVED".equalsIgnoreCase(product.getApprovalStatus())
+                && product.getStore() != null && "APPROVED".equalsIgnoreCase(product.getStore().getStoreStatus())));
     }
 
     private record Seller(Integer storeId, String storeName, String source) {}

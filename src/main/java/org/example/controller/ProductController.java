@@ -3,7 +3,6 @@ package org.example.controller;
 import org.example.dto.CatalogProductResponse;
 import org.example.model.Product;
 import org.example.service.ProductService;
-import org.example.repository.ProductRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,11 +14,9 @@ import java.util.List;
 public class ProductController {
 
     private final ProductService productService;
-    private final ProductRepository productRepository;
 
-    public ProductController(ProductService productService, ProductRepository productRepository) {
+    public ProductController(ProductService productService) {
         this.productService = productService;
-        this.productRepository = productRepository;
     }
 
     @GetMapping
@@ -32,17 +29,27 @@ public class ProductController {
         return productService.getAllProducts();
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<CatalogProductResponse> getProduct(@PathVariable Integer id) {
+        return productService.getProductById(id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{id}/offers")
+    public ResponseEntity<List<CatalogProductResponse>> getProductOffers(@PathVariable Integer id) {
+        return productService.getProductOffers(id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
     @PostMapping
     public ResponseEntity<Product> createProduct(@RequestBody Product product) {
         return ResponseEntity.ok(productService.createProduct(product));
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<Product>> searchProducts(@RequestParam(name = "q", defaultValue = "") String q) {
-        if (q.trim().isEmpty()) {
-            return ResponseEntity.ok(productRepository.findAll());
-        }
-        List<Product> results = productRepository.searchByKeyword(q);
-        return ResponseEntity.ok(results);
+    public ResponseEntity<List<CatalogProductResponse>> searchProducts(@RequestParam(name = "q", defaultValue = "") String q) {
+        return ResponseEntity.ok(productService.searchProducts(q));
     }
 }
