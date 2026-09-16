@@ -98,6 +98,9 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         Map<String, CardGame> games = seedGames();
+        // Shuffle House is retained as legacy local-demo data. Its owner has an
+        // approved store, so the account must remain a SELLER as well.
+        getOrCreateDemoSeller();
         User approvedSeller = getOrCreateApprovedSeller();
         Map<String, MarketplaceStore> stores = seedStores(approvedSeller);
         reassignLegacyShuffleHouseListings(stores.get("rare-finds"));
@@ -294,12 +297,18 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     }
 
     private User getOrCreateDemoSeller() {
-        return userRepository.findByEmail("marketplace.demo@optracard.local").orElseGet(() -> {
+        return userRepository.findByEmail("marketplace.demo@optracard.local").map(user -> {
+            user.setUsername("marketplace_demo_seller");
+            user.setRole("SELLER");
+            user.setPhone("0800000000");
+            user.setAddress("Local catalog seed data");
+            return userRepository.save(user);
+        }).orElseGet(() -> {
             User user = new User();
             user.setUsername("marketplace_demo_seller");
             user.setEmail("marketplace.demo@optracard.local");
             user.setPassword(passwordEncoder.encode("local-demo-only"));
-            user.setRole("USER");
+            user.setRole("SELLER");
             user.setPhone("0800000000");
             user.setAddress("Local catalog seed data");
             return userRepository.save(user);
