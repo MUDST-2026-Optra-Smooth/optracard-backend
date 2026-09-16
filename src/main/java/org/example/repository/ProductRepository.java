@@ -28,6 +28,9 @@ public interface ProductRepository extends JpaRepository<Product, Integer> {
     @EntityGraph(attributePaths = {"cardGame", "store"})
     List<Product> findByListingSourceOrderByProIdDesc(String listingSource);
 
+    @EntityGraph(attributePaths = {"cardGame", "store"})
+    List<Product> findAllByOrderByProIdDesc();
+
     boolean existsByProNameAndListingSource(String proName, String listingSource);
 
     boolean existsByProNameAndListingSourceAndStore_StoreId(String proName, String listingSource, Integer storeId);

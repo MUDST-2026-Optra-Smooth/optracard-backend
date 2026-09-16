@@ -1,7 +1,8 @@
 package org.example.controller;
 
-import org.example.dto.StoreApplicationResponse;
+import org.example.dto.AdminData;
 import org.example.service.MarketplaceStoreService;
+import org.example.service.AdminDataService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -18,20 +19,23 @@ import org.springframework.web.server.ResponseStatusException;
 @CrossOrigin(origins = "http://localhost:5173")
 public class AdminStoreController {
     private final MarketplaceStoreService storeService;
+    private final AdminDataService adminDataService;
 
-    public AdminStoreController(MarketplaceStoreService storeService) {
+    public AdminStoreController(MarketplaceStoreService storeService, AdminDataService adminDataService) {
         this.storeService = storeService;
+        this.adminDataService = adminDataService;
     }
 
     @PutMapping("/{id}/review")
-    public StoreApplicationResponse review(Authentication authentication,
-                                           @PathVariable Integer id,
-                                           @RequestBody ReviewRequest request) {
+    public AdminData.StoreResponse review(Authentication authentication,
+                                          @PathVariable Integer id,
+                                          @RequestBody ReviewRequest request) {
         boolean admin = authentication != null && authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch(role -> role.equals("ROLE_ADMIN") || role.equals("ROLE_SUPER_ADMIN"));
         if (!admin) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Administrator access required");
-        return storeService.reviewApplication(id, request == null ? null : request.status(), request == null ? null : request.note());
+        storeService.reviewApplication(id, request == null ? null : request.status(), request == null ? null : request.note());
+        return adminDataService.getStore(id);
     }
 
     public record ReviewRequest(String status, String note) {}
