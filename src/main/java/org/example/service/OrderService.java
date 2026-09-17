@@ -111,6 +111,20 @@ public class OrderService {
         return orderRepository.findByUserIdOrderByCreatedAtDesc(userId).stream().map(this::toResponse).toList();
     }
 
+    @Transactional(readOnly = true)
+    public OrderResponse getOrderDetail(Integer userId, String requestedOrderNumber) {
+        String orderNumber = normalize(requestedOrderNumber);
+        if (orderNumber == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Order number is required");
+        }
+
+        return orderRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .filter(order -> orderNumber.equals(orderNumber(order)))
+                .findFirst()
+                .map(this::toResponse)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
+    }
+
     private Order newOrder(Integer userId, CreateOrderRequest request, String payment, String shipping, Seller seller) {
         Order order = new Order();
         order.setUserId(userId);
@@ -152,6 +166,7 @@ public class OrderService {
         return new OrderResponse(order.getOrderId(), orderNumber(order), order.getStoreId(), storeName, source,
                 order.getCreatedAt(), order.getTotalPrice(), order.getPaymentMethod(), order.getPaymentStatus(),
                 displayStatus(order.getStatus()), order.getShippingMethod(), order.getShippingFee(),
+                order.getTrackingNumber(),
                 order.getShippingAddress(), order.getRecipientName(), order.getRecipientPhone(), items);
     }
 
@@ -198,7 +213,8 @@ public class OrderService {
     private boolean isPurchasable(Product product) {
         return Boolean.TRUE.equals(product.getIsActive())
                 && (!"MARKETPLACE".equalsIgnoreCase(product.getListingSource())
-                || (product.getStore() != null && "APPROVED".equalsIgnoreCase(product.getStore().getStoreStatus())));
+                || ("APPROVED".equalsIgnoreCase(product.getApprovalStatus())
+                && product.getStore() != null && "APPROVED".equalsIgnoreCase(product.getStore().getStoreStatus())));
     }
 
     private record Seller(Integer storeId, String storeName, String source) {}

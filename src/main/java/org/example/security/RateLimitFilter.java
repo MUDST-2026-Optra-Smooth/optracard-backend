@@ -8,6 +8,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -18,6 +19,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
+
+    /** Disabled while the local application is being developed. */
+    @Value("${app.rate-limit.enabled:false}")
+    private boolean enabled;
 
     // เก็บข้อมูล Bucket ของแต่ละ IP
     private final Map<String, Bucket> cache = new ConcurrentHashMap<>();
@@ -34,7 +39,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         // Browser CORS preflight requests are not application requests and
         // must not consume a visitor's API quota.
-        return "OPTIONS".equalsIgnoreCase(request.getMethod());
+        return !enabled || "OPTIONS".equalsIgnoreCase(request.getMethod());
     }
 
     @Override
