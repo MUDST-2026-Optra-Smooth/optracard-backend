@@ -16,6 +16,7 @@ public record OrderResponse(
         String status,
         String shippingMethod,
         Double shippingFee,
+        String trackingNumber,
         String shippingAddress,
         String recipientName,
         String recipientPhone,
