@@ -1,5 +1,7 @@
 package org.example.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.example.dto.CartResponse;
 import org.example.service.CartService;
 import org.example.model.User;
@@ -21,7 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/cart")
-@CrossOrigin(origins = "*") // สำคัญมาก! อนุญาตให้ React ที่รันอยู่คนละพอร์ตสามารถเรียกใช้ API นี้ได้โดยไม่ติด Error CORS
+@CrossOrigin(origins = "*")
+@Tag(name = "Cart", description = "Shopping cart management endpoints")
 public class CartController {
 
     @Autowired
@@ -30,16 +33,14 @@ public class CartController {
     @Autowired
     private UserRepository userRepository;
 
-    // 1. Endpoint สำหรับดูตะกร้าของ User 
-    // ตัวอย่างการเรียกใช้งาน: GET http://localhost:8080/api/cart/1
+    @Operation(summary = "Get user's cart")
     @GetMapping("/{userId}")
     public ResponseEntity<CartResponse> getCart(@PathVariable Integer userId, Authentication authentication) {
         Integer currentUserId = authenticatedUserId(authentication, userId);
         return ResponseEntity.ok(cartService.getCartResponse(currentUserId));
     }
 
-    // 2. Endpoint สำหรับเพิ่มสินค้าลงตะกร้า
-    // ตัวอย่างการเรียกใช้งาน: POST http://localhost:8080/api/cart/add?userId=1&productId=101&quantity=2
+    @Operation(summary = "Add item to cart")
     @PostMapping("/add")
     public ResponseEntity<CartResponse> addItemToCart(
             @RequestParam Integer userId,
@@ -52,8 +53,7 @@ public class CartController {
         return ResponseEntity.ok(cartService.getCartResponse(currentUserId));
     }
 
-    // 3. Endpoint สำหรับอัปเดตจำนวนสินค้า (ใช้ PUT)
-    // ตัวอย่าง: PUT http://localhost:8080/api/cart/update?userId=1&productId=1&quantity=5
+    @Operation(summary = "Update item quantity in cart")
     @PutMapping("/update")
     public ResponseEntity<CartResponse> updateItemQuantity(
             @RequestParam Integer userId,
@@ -66,8 +66,7 @@ public class CartController {
         return ResponseEntity.ok(cartService.getCartResponse(currentUserId));
     }
 
-    // 4. Endpoint สำหรับลบสินค้าออกจากตะกร้า (ใช้ DELETE)
-    // ตัวอย่าง: DELETE http://localhost:8080/api/cart/remove?userId=1&productId=1
+    @Operation(summary = "Remove an item from cart")
     @DeleteMapping("/remove")
     public ResponseEntity<CartResponse> removeItem(
             @RequestParam Integer userId,
@@ -79,8 +78,7 @@ public class CartController {
         return ResponseEntity.ok(cartService.getCartResponse(currentUserId));
     }
 
-    // 5. Endpoint สำหรับล้างตะกร้าทั้งหมด (ใช้ DELETE)
-    // ตัวอย่าง: DELETE http://localhost:8080/api/cart/clear/1
+    @Operation(summary = "Clear all items from cart")
     @DeleteMapping("/clear/{userId}")
     public ResponseEntity<CartResponse> clearCart(@PathVariable Integer userId, Authentication authentication) {
         Integer currentUserId = authenticatedUserId(authentication, userId);

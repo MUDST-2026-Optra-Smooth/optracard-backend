@@ -1,5 +1,7 @@
 package org.example.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.example.dto.ProfileResponse;
 import org.example.dto.ProfileUpdateRequest;
 import org.example.dto.ProfileUpdateResponse;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/profile")
 @CrossOrigin(origins = "http://localhost:5173")
+@Tag(name = "Profile", description = "User profile retrieval and update endpoints")
 public class ProfileController {
 
     private final ProfileService profileService;
@@ -25,6 +28,7 @@ public class ProfileController {
         this.profileService = profileService;
     }
 
+    @Operation(summary = "Get current user profile")
     @GetMapping
     public ResponseEntity<ProfileResponse> getProfile(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
@@ -34,6 +38,7 @@ public class ProfileController {
         return ResponseEntity.ok(profileService.getProfile(authentication.getName()));
     }
 
+    @Operation(summary = "Update current user profile")
     @PutMapping
     public ResponseEntity<ProfileUpdateResponse> updateProfile(
             Authentication authentication,

@@ -1,5 +1,7 @@
 package org.example.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.example.dto.CreateOrderRequest;
 import org.example.dto.CheckoutResponse;
 import org.example.dto.OrderResponse;
@@ -21,6 +23,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/orders")
 @CrossOrigin(origins = "http://localhost:5173")
+@Tag(name = "Orders", description = "Order placement and order history endpoints")
 public class OrderController {
     private final OrderService orderService;
     private final UserRepository userRepository;
@@ -30,11 +33,13 @@ public class OrderController {
         this.userRepository = userRepository;
     }
 
+    @Operation(summary = "Get user order history")
     @GetMapping
     public ResponseEntity<List<OrderResponse>> history(Authentication authentication) {
         return ResponseEntity.ok(orderService.getOrderHistory(currentUser(authentication).getUaId()));
     }
 
+    @Operation(summary = "Place order from user's current cart")
     @GetMapping("/{orderNumber}")
     public ResponseEntity<OrderResponse> detail(Authentication authentication, @PathVariable String orderNumber) {
         return ResponseEntity.ok(orderService.getOrderDetail(currentUser(authentication).getUaId(), orderNumber));
