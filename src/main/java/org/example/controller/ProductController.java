@@ -7,9 +7,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.example.dto.CatalogProductResponse;
 import org.example.model.Product;
-import org.example.repository.ProductRepository;
 import org.example.service.ProductService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,16 +20,9 @@ import java.util.List;
 public class ProductController {
 
     private final ProductService productService;
-    private final ProductRepository productRepository;
 
     public ProductController(ProductService productService) {
-        this(productService, null);
-    }
-
-    @Autowired
-    public ProductController(ProductService productService, @Autowired(required = false) ProductRepository productRepository) {
         this.productService = productService;
-        this.productRepository = productRepository;
     }
 
     @Operation(
@@ -47,11 +38,12 @@ public class ProductController {
     }
 
     @Operation(
-            summary = "Create a new product",
-            description = "Add a new product entry to the catalog."
+            summary = "Get product by ID",
+            description = "Retrieve details of a specific catalog product by its ID."
     )
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Product successfully created")
+            @ApiResponse(responseCode = "200", description = "Product details retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Product not found")
     })
     @GetMapping("/{id}")
     public ResponseEntity<CatalogProductResponse> getProduct(@PathVariable Integer id) {
@@ -60,6 +52,14 @@ public class ProductController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    @Operation(
+            summary = "Get product offers",
+            description = "Retrieve all active and approved offers for a specific product item, sorted by price."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Product offers retrieved successfully"),
+            @ApiResponse(responseCode = "404", description = "Product not found")
+    })
     @GetMapping("/{id}/offers")
     public ResponseEntity<List<CatalogProductResponse>> getProductOffers(@PathVariable Integer id) {
         return productService.getProductOffers(id)
@@ -67,6 +67,13 @@ public class ProductController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    @Operation(
+            summary = "Create a new product",
+            description = "Add a new product entry to the catalog."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Product successfully created")
+    })
     @PostMapping
     public ResponseEntity<Product> createProduct(@RequestBody Product product) {
         return ResponseEntity.ok(productService.createProduct(product));
@@ -83,13 +90,12 @@ public class ProductController {
             )
     })
     @GetMapping("/search")
-    public ResponseEntity<List<Product>> searchProducts(
+    public ResponseEntity<List<CatalogProductResponse>> searchProducts(
             @Parameter(
                     description = "Keyword to search for in product name or card game name",
                     example = "Pokemon"
             )
             @RequestParam(name = "q", defaultValue = "") String q) {
-    public ResponseEntity<List<CatalogProductResponse>> searchProducts(@RequestParam(name = "q", defaultValue = "") String q) {
         return ResponseEntity.ok(productService.searchProducts(q));
     }
 }

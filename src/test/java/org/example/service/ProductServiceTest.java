@@ -1,6 +1,8 @@
 package org.example.service;
 
+import org.example.dto.CatalogProductResponse;
 import org.example.model.Product;
+import org.example.repository.MarketplaceStoreRepository;
 import org.example.repository.ProductRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,37 +23,47 @@ class ProductServiceTest {
     @Mock
     private ProductRepository productRepository;
 
+    @Mock
+    private MarketplaceStoreRepository marketplaceStoreRepository;
+
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository);
+        productService = new ProductService(productRepository, marketplaceStoreRepository);
     }
 
     @Test
     void searchProducts_whenEmptyKeyword_returnsAllProducts() {
         Product p = new Product();
+        p.setProId(1);
         p.setProName("Test Card");
-        when(productRepository.findAll()).thenReturn(List.of(p));
+        p.setIsActive(true);
+        p.setListingSource("OFFICIAL");
+        when(productRepository.findByIsActiveTrueOrderByProTypeAscProIdAsc()).thenReturn(List.of(p));
 
-        List<Product> results = productService.searchProducts("");
+        List<CatalogProductResponse> results = productService.searchProducts("");
 
         assertNotNull(results);
         assertEquals(1, results.size());
-        verify(productRepository).findAll();
+        assertEquals("Test Card", results.get(0).name());
+        verify(productRepository).findByIsActiveTrueOrderByProTypeAscProIdAsc();
     }
 
     @Test
     void searchProducts_whenKeywordProvided_searchesByKeyword() {
         Product p = new Product();
+        p.setProId(2);
         p.setProName("Charizard");
+        p.setIsActive(true);
+        p.setListingSource("OFFICIAL");
         when(productRepository.searchByKeyword("Charizard")).thenReturn(List.of(p));
 
-        List<Product> results = productService.searchProducts(" Charizard ");
+        List<CatalogProductResponse> results = productService.searchProducts(" Charizard ");
 
         assertNotNull(results);
         assertEquals(1, results.size());
-        assertEquals("Charizard", results.get(0).getProName());
+        assertEquals("Charizard", results.get(0).name());
         verify(productRepository).searchByKeyword("Charizard");
     }
 }
