@@ -63,11 +63,17 @@ public class ProductController {
             description = "Search products by keyword matching product name or card game name. If no keyword is given, returns all products."
     )
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Matching products retrieved successfully")
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Matching products retrieved successfully"
+            )
     })
     @GetMapping("/search")
     public ResponseEntity<List<Product>> searchProducts(
-            @Parameter(description = "Keyword to search for in product name or card game name", example = "Pokemon")
+            @Parameter(
+                    description = "Keyword to search for in product name or card game name",
+                    example = "Pokemon"
+            )
             @RequestParam(name = "q", defaultValue = "") String q) {
         return ResponseEntity.ok(productService.searchProducts(q));
     }
