@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,6 +40,11 @@ public class OrderController {
     }
 
     @Operation(summary = "Place order from user's current cart")
+    @GetMapping("/{orderNumber}")
+    public ResponseEntity<OrderResponse> detail(Authentication authentication, @PathVariable String orderNumber) {
+        return ResponseEntity.ok(orderService.getOrderDetail(currentUser(authentication).getUaId(), orderNumber));
+    }
+
     @PostMapping
     public ResponseEntity<CheckoutResponse> placeOrder(Authentication authentication, @RequestBody CreateOrderRequest request) {
         return ResponseEntity.ok(orderService.placeOrder(currentUser(authentication).getUaId(), request));
