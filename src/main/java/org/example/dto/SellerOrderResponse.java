@@ -3,20 +3,15 @@ package org.example.dto;
 import java.time.LocalDateTime;
 import java.util.List;
 
-public record OrderResponse(
+public record SellerOrderResponse(
         Integer orderId,
         String orderNumber,
-        Integer storeId,
-        String storeName,
-        String source,
+        Integer buyerId,
         LocalDateTime createdAt,
         Double total,
-        String paymentMethod,
-        String paymentStatus,
         String status,
+        String paymentStatus,
         String shippingMethod,
-        Double shippingFee,
-        String trackingNumber,
         String shippingAddress,
         String recipientName,
         String recipientPhone,

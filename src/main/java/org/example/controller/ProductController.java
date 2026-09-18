@@ -53,6 +53,20 @@ public class ProductController {
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Product successfully created")
     })
+    @GetMapping("/{id}")
+    public ResponseEntity<CatalogProductResponse> getProduct(@PathVariable Integer id) {
+        return productService.getProductById(id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{id}/offers")
+    public ResponseEntity<List<CatalogProductResponse>> getProductOffers(@PathVariable Integer id) {
+        return productService.getProductOffers(id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
     @PostMapping
     public ResponseEntity<Product> createProduct(@RequestBody Product product) {
         return ResponseEntity.ok(productService.createProduct(product));
@@ -69,6 +83,7 @@ public class ProductController {
     public ResponseEntity<List<Product>> searchProducts(
             @Parameter(description = "Keyword to search for in product name or card game name", example = "Pokemon")
             @RequestParam(name = "q", defaultValue = "") String q) {
+    public ResponseEntity<List<CatalogProductResponse>> searchProducts(@RequestParam(name = "q", defaultValue = "") String q) {
         return ResponseEntity.ok(productService.searchProducts(q));
     }
 }

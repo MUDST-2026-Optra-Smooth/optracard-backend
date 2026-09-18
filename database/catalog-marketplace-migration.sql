@@ -72,9 +72,21 @@ CREATE INDEX IF NOT EXISTS ix_orders_user_created
 CREATE INDEX IF NOT EXISTS ix_orders_store_created
     ON orders (ord_store_id, ord_createdate DESC);
 
-ALTER TABLE products ADD COLUMN IF NOT EXISTS pro_sku VARCHAR(80);
 ALTER TABLE products ADD COLUMN IF NOT EXISTS pro_listing_source VARCHAR(20) DEFAULT 'OFFICIAL';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS store_id INT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS pro_set VARCHAR(255);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS pro_language VARCHAR(100);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS pro_approval_status VARCHAR(20) DEFAULT 'APPROVED';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS pro_template_id INT;
+UPDATE products SET pro_approval_status = 'APPROVED' WHERE pro_approval_status IS NULL;
+ALTER TABLE products ALTER COLUMN pro_approval_status SET DEFAULT 'APPROVED', ALTER COLUMN pro_approval_status SET NOT NULL;
+
+-- Product details used by the public product-detail page. The old local
+-- catalog stored condition/seeded JSON and an internal SKU; neither is part
+-- of the product model anymore.
+DROP INDEX IF EXISTS ux_products_pro_sku;
+ALTER TABLE products DROP COLUMN IF EXISTS pro_sku;
+ALTER TABLE products DROP COLUMN IF EXISTS pro_attributes;
 
 UPDATE products
 SET pro_listing_source = 'OFFICIAL'
@@ -84,15 +96,71 @@ ALTER TABLE products
     ALTER COLUMN pro_listing_source SET DEFAULT 'OFFICIAL',
     ALTER COLUMN pro_listing_source SET NOT NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_products_pro_sku
-    ON products (pro_sku)
-    WHERE pro_sku IS NOT NULL;
-
 CREATE INDEX IF NOT EXISTS ix_products_listing_source
     ON products (pro_listing_source);
 
 CREATE INDEX IF NOT EXISTS ix_products_store_id
     ON products (store_id);
+
+CREATE INDEX IF NOT EXISTS ix_products_template_id
+    ON products (pro_template_id);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_products_template_product'
+    ) THEN
+        ALTER TABLE products
+            ADD CONSTRAINT fk_products_template_product
+            FOREIGN KEY (pro_template_id) REFERENCES products(pro_id);
+    END IF;
+END $$;
+
+-- Official catalog metadata.
+UPDATE products SET pro_set = 'Surging Sparks [SV8]', pro_language = 'English'
+WHERE pro_name = 'Pikachu ex Special Illustration';
+UPDATE products SET pro_set = 'Romance Dawn [OP01]', pro_language = 'English'
+WHERE pro_name = 'Monkey D. Luffy Leader Parallel';
+UPDATE products SET pro_set = 'Quarter Century Chronicle', pro_language = 'English'
+WHERE pro_name = 'Dark Magician 25th Anniversary';
+UPDATE products SET pro_set = 'Dominaria United [DMU]', pro_language = 'English'
+WHERE pro_name = 'Liliana of the Veil Borderless';
+UPDATE products SET pro_set = 'Scarlet & Violet—Journey Together [SV9]', pro_language = 'English'
+WHERE pro_name IN ('Pokémon Journey Together Booster Pack', 'Pokémon Journey Together Booster Box');
+UPDATE products SET pro_set = 'Royal Blood [OP-10]', pro_language = 'Japanese'
+WHERE pro_name IN ('One Piece OP-10 Royal Blood Booster', 'One Piece OP-10 Booster Box');
+UPDATE products SET pro_set = 'Alliance Insight [ALIN]', pro_language = 'English'
+WHERE pro_name IN ('Yu-Gi-Oh! Alliance Insight Booster', 'Yu-Gi-Oh! Alliance Insight Box');
+UPDATE products SET pro_set = 'Aetherdrift [DFT]', pro_language = 'English'
+WHERE pro_name IN ('MTG Aetherdrift Play Booster', 'MTG Aetherdrift Play Booster Box');
+UPDATE products SET pro_set = 'Fusion Strike [SWSH8]', pro_language = 'English'
+WHERE pro_name = 'Gengar VMAX Alternate Art';
+UPDATE products SET pro_set = 'Romance Dawn [OP01]', pro_language = 'English'
+WHERE pro_name = 'Nami Manga Rare';
+UPDATE products SET pro_set = 'Ghosts From the Past: The 2nd Haunting [GFP2]', pro_language = 'English'
+WHERE pro_name = 'Blue-Eyes White Dragon Ghost Rare';
+UPDATE products SET pro_set = 'Double Masters 2022 [2X2]', pro_language = 'English'
+WHERE pro_name = 'Mana Crypt Borderless';
+UPDATE products SET pro_set = 'Pokémon Card 151', pro_language = 'Korean'
+WHERE pro_name = 'Pokémon 151 Korean Booster Pack';
+UPDATE products SET pro_set = 'Premium Booster -The Best- [PRB-01]', pro_language = 'Japanese'
+WHERE pro_name IN ('One Piece PRB-01 The Best Booster', 'One Piece PRB-01 Booster Box');
+UPDATE products SET pro_set = 'Quarter Century Bonanza', pro_language = 'English'
+WHERE pro_name = 'Yu-Gi-Oh! Quarter Century Bonanza Pack';
+UPDATE products SET pro_set = 'Magic: The Gathering Foundations [FDN]', pro_language = 'English'
+WHERE pro_name = 'MTG Foundations Collector Booster';
+UPDATE products SET pro_set = 'Pokémon Card 151', pro_language = 'Japanese'
+WHERE pro_name = 'Pokémon 151 Japanese Booster Box';
+UPDATE products SET pro_set = '25th Anniversary Rarity Collection', pro_language = 'English'
+WHERE pro_name = 'Yu-Gi-Oh! Rarity Collection Box';
+UPDATE products SET pro_set = 'Modern Horizons 3 [MH3]', pro_language = 'English'
+WHERE pro_name = 'MTG Modern Horizons 3 Play Box';
+UPDATE products SET pro_set = 'OP-16', pro_language = 'Japanese'
+WHERE pro_name = 'Monkey D. Luffy OP-16';
+UPDATE products SET pro_set = 'Unified Minds [SM11]', pro_language = 'English'
+WHERE pro_name = 'Raichu & Alolan Raichu GX';
+UPDATE products SET pro_set = 'BT07 Life of หน่วง', pro_language = 'Thai'
+WHERE pro_name = 'พี่หน่วง พิธีกรผมสวย';
 
 DO $$
 BEGIN
@@ -113,6 +181,14 @@ BEGIN
                 (pro_listing_source = 'OFFICIAL' AND store_id IS NULL)
                 OR (pro_listing_source = 'MARKETPLACE' AND store_id IS NOT NULL)
             );
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'ck_products_approval_status'
+    ) THEN
+        ALTER TABLE products
+            ADD CONSTRAINT ck_products_approval_status
+            CHECK (pro_approval_status IN ('PENDING', 'APPROVED', 'REJECTED'));
     END IF;
 END $$;
 

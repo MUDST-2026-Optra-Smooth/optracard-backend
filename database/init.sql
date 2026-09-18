@@ -52,18 +52,21 @@ CREATE TABLE Products (
      Pro_ID SERIAL PRIMARY KEY,
      Game_ID INT REFERENCES CardGames(Game_ID),
      Pro_Name VARCHAR(255) NOT NULL,
-     Pro_SKU VARCHAR(80) UNIQUE,
      Pro_Cost DECIMAL(10, 2) NOT NULL,
      Pro_PriceOfSell DECIMAL(10, 2) NOT NULL,
      Pro_Quantity INT NOT NULL DEFAULT 0,
      Pro_Type VARCHAR(100),
      Pro_ImageURL TEXT,
-     Pro_Attributes TEXT,
+     Pro_Set VARCHAR(255),
+     Pro_Language VARCHAR(100),
      Pro_Description TEXT,
      Is_Active BOOLEAN DEFAULT TRUE,
      Pro_Listing_Source VARCHAR(20) NOT NULL DEFAULT 'OFFICIAL'
          CHECK (Pro_Listing_Source IN ('OFFICIAL', 'MARKETPLACE')),
+     Pro_Approval_Status VARCHAR(20) NOT NULL DEFAULT 'APPROVED'
+         CHECK (Pro_Approval_Status IN ('PENDING', 'APPROVED', 'REJECTED')),
      Store_ID INT REFERENCES Marketplace_Stores(Store_ID) ON DELETE SET NULL,
+     Pro_Template_ID INT REFERENCES Products(Pro_ID),
      CHECK (
          (Pro_Listing_Source = 'OFFICIAL' AND Store_ID IS NULL)
          OR (Pro_Listing_Source = 'MARKETPLACE' AND Store_ID IS NOT NULL)

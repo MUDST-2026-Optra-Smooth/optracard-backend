@@ -18,10 +18,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
- * Local-only catalog data for the home page. Every SKU is checked before it is
- * inserted, so restarting the backend never duplicates the sample listings.
+ * Local-only catalog data for the home page. Product names and listing sources
+ * are checked before insertion, so restarting the backend never duplicates the
+ * sample listings.
  */
 @Component
 @Profile("local")
@@ -70,6 +72,7 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     private static final String COMMANDER_CASE_IMAGE = "https://mtgonslaught.com/cdn/shop/files/5_set_filled.png?v=1747865332&width=1946";
 
     private static final Map<String, String> PRODUCT_IMAGE_URLS = createProductImageUrls();
+    private static final Map<String, ProductMetadata> PRODUCT_METADATA = createProductMetadata();
 
     private final ProductRepository productRepository;
     private final CardGameRepository cardGameRepository;
@@ -95,16 +98,25 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         Map<String, CardGame> games = seedGames();
-        User demoSeller = getOrCreateDemoSeller();
-        Map<String, MarketplaceStore> stores = seedStores(demoSeller.getUaId());
+        // Shuffle House is retained as legacy local-demo data. Its owner has an
+        // approved store, so the account must remain a SELLER as well.
+        getOrCreateDemoSeller();
+        User approvedSeller = getOrCreateApprovedSeller();
+        Map<String, MarketplaceStore> stores = seedStores(approvedSeller);
+        reassignLegacyShuffleHouseListings(stores.get("rare-finds"));
+        deactivateMarketplaceDuplicatesOfOfficial();
 
         for (SeedProduct seed : sampleProducts()) {
-            if (productRepository.findByProSku(seed.sku()).isPresent()) {
+            MarketplaceStore store = MARKETPLACE.equals(seed.source()) ? stores.get(seed.storeSlug()) : null;
+            boolean alreadyExists = MARKETPLACE.equals(seed.source())
+                    ? store != null && productRepository.existsByProNameAndListingSourceAndStore_StoreId(
+                    seed.name(), seed.source(), store.getStoreId())
+                    : productRepository.existsByProNameAndListingSource(seed.name(), seed.source());
+            if (alreadyExists) {
                 continue;
             }
 
             Product product = new Product();
-            product.setProSku(seed.sku());
             product.setProName(seed.name());
             product.setGameId(games.get(seed.game()).getGameId());
             product.setProType(seed.type());
@@ -112,11 +124,14 @@ public class LocalCatalogSeeder implements ApplicationRunner {
             product.setProPriceOfSell(seed.price());
             product.setProQuantity(seed.stock());
             product.setProImageUrl(imageUrlFor(seed.game(), seed.type(), seed.name()));
+            ProductMetadata metadata = metadataFor(seed.name());
+            product.setProductSet(metadata.productSet());
+            product.setLanguage(metadata.language());
             product.setProDescription(seed.description());
-            product.setProAttributes("{\"condition\":\"Near Mint\",\"seeded\":true}");
             product.setIsActive(true);
             product.setListingSource(seed.source());
-            product.setStore(MARKETPLACE.equals(seed.source()) ? stores.get(seed.storeSlug()) : null);
+            product.setApprovalStatus("APPROVED");
+            product.setStore(store);
             productRepository.save(product);
         }
 
@@ -124,6 +139,7 @@ public class LocalCatalogSeeder implements ApplicationRunner {
         // row from the product-name map so old generic demo URLs are replaced
         // by the image that matches its pro_name.
         updateProductImages();
+        updateProductMetadata();
     }
 
     private void updateProductImages() {
@@ -135,6 +151,29 @@ public class LocalCatalogSeeder implements ApplicationRunner {
                 productRepository.save(product);
             }
         }
+    }
+
+    private void updateProductMetadata() {
+        for (Product product : productRepository.findAll()) {
+            if (product.getApprovalStatus() == null) {
+                product.setApprovalStatus("APPROVED");
+                productRepository.save(product);
+            }
+            ProductMetadata metadata = PRODUCT_METADATA.get(product.getProName());
+            if (metadata == null) {
+                continue;
+            }
+            if (!Objects.equals(metadata.productSet(), product.getProductSet())
+                    || !Objects.equals(metadata.language(), product.getLanguage())) {
+                product.setProductSet(metadata.productSet());
+                product.setLanguage(metadata.language());
+                productRepository.save(product);
+            }
+        }
+    }
+
+    private ProductMetadata metadataFor(String productName) {
+        return PRODUCT_METADATA.getOrDefault(productName, new ProductMetadata(null, null));
     }
 
     private String imageUrlFor(String game, String type, String name) {
@@ -258,35 +297,128 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     }
 
     private User getOrCreateDemoSeller() {
-        return userRepository.findByEmail("marketplace.demo@optracard.local").orElseGet(() -> {
+        return userRepository.findByEmail("marketplace.demo@optracard.local").map(user -> {
+            user.setUsername("marketplace_demo_seller");
+            user.setRole("SELLER");
+            user.setPhone("0800000000");
+            user.setAddress("Local catalog seed data");
+            return userRepository.save(user);
+        }).orElseGet(() -> {
             User user = new User();
             user.setUsername("marketplace_demo_seller");
             user.setEmail("marketplace.demo@optracard.local");
             user.setPassword(passwordEncoder.encode("local-demo-only"));
-            user.setRole("USER");
+            user.setRole("SELLER");
             user.setPhone("0800000000");
             user.setAddress("Local catalog seed data");
             return userRepository.save(user);
         });
     }
 
-    private Map<String, MarketplaceStore> seedStores(Integer sellerUserId) {
+    private Map<String, MarketplaceStore> seedStores(User approvedSeller) {
         Map<String, MarketplaceStore> stores = new HashMap<>();
-        stores.put("card-corner-bkk", getOrCreateStore(sellerUserId, "Card Corner BKK", "card-corner-bkk", "Pokémon and One Piece singles"));
-        stores.put("moonlight-tcg", getOrCreateStore(sellerUserId, "Moonlight TCG", "moonlight-tcg", "Collector cards and sealed products"));
-        stores.put("shuffle-house", getOrCreateStore(sellerUserId, "Shuffle House", "shuffle-house", "Trading cards and tabletop accessories"));
-        stores.put("rare-finds", getOrCreateStore(sellerUserId, "Rare Finds TCG", "rare-finds", "Curated cards for serious collectors"));
+        User cardCornerSeller = getOrCreateMarketplaceSeller(
+                "card_corner_seller", "cardcorner.demo@optracard.local", "CardCorner!2026", "0823456789");
+        User moonlightSeller = getOrCreateMarketplaceSeller(
+                "moonlight_tcg_seller", "moonlight.demo@optracard.local", "Moonlight!2026", "0834567890");
+        User rareFindsSeller = getOrCreateMarketplaceSeller(
+                "rare_finds_seller", "rarefinds.demo@optracard.local", "RareFinds!2026", "0845678901");
+
+        stores.put("aaa-trading", getOrCreateStore(approvedSeller.getUaId(), "AAA-Trading", "aaa-trading", "Curated singles and sealed TCG products from AAA-Trading."));
+        stores.put("card-corner-bkk", getOrCreateStore(cardCornerSeller.getUaId(), "Card Corner BKK", "card-corner-bkk", "Pokémon and One Piece singles."));
+        stores.put("moonlight-tcg", getOrCreateStore(moonlightSeller.getUaId(), "Moonlight TCG", "moonlight-tcg", "Collector cards and sealed products."));
+        stores.put("rare-finds", getOrCreateStore(rareFindsSeller.getUaId(), "Rare Finds TCG", "rare-finds", "Curated cards for serious collectors."));
         return stores;
     }
 
+    private void reassignLegacyShuffleHouseListings(MarketplaceStore rareFindsStore) {
+        if (rareFindsStore == null) return;
+        List<String> legacyNames = List.of(
+                "Mana Crypt Borderless",
+                "MTG Foundations Collector Booster",
+                "MTG Modern Horizons 3 Play Box",
+                "MTG Commander Deck Case"
+        );
+        for (Product product : productRepository.findByListingSourceOrderByProIdDesc(MARKETPLACE)) {
+            if (legacyNames.contains(product.getProName())
+                    && (product.getStore() == null || !rareFindsStore.getStoreId().equals(product.getStore().getStoreId()))) {
+                product.setStore(rareFindsStore);
+                productRepository.save(product);
+            }
+        }
+    }
+
+    /** Keep Marketplace demo stock distinct from Optracard Official Store stock. */
+    private void deactivateMarketplaceDuplicatesOfOfficial() {
+        List<Product> officialProducts = productRepository.findByListingSourceOrderByProIdDesc(OFFICIAL);
+        for (Product marketplaceProduct : productRepository.findByListingSourceOrderByProIdDesc(MARKETPLACE)) {
+            boolean duplicatesOfficial = officialProducts.stream().anyMatch(officialProduct ->
+                    Objects.equals(officialProduct.getProName(), marketplaceProduct.getProName())
+                            && Objects.equals(officialProduct.getProType(), marketplaceProduct.getProType())
+                            && Objects.equals(officialProduct.getGameId(), marketplaceProduct.getGameId()));
+            if (duplicatesOfficial && Boolean.TRUE.equals(marketplaceProduct.getIsActive())) {
+                marketplaceProduct.setIsActive(false);
+                productRepository.save(marketplaceProduct);
+            }
+        }
+    }
+
+    private User getOrCreateApprovedSeller() {
+        return userRepository.findByEmail("seller.demo@optracard.local").map(user -> {
+            user.setUsername("aaa_trading_seller");
+            user.setPassword(passwordEncoder.encode("SellerDemo!2026"));
+            user.setRole("SELLER");
+            user.setPhone("0812345678");
+            user.setAddress("Bangkok, Thailand");
+            return userRepository.save(user);
+        }).orElseGet(() -> {
+            User user = new User();
+            user.setUsername("aaa_trading_seller");
+            user.setEmail("seller.demo@optracard.local");
+            user.setPassword(passwordEncoder.encode("SellerDemo!2026"));
+            user.setRole("SELLER");
+            user.setPhone("0812345678");
+            user.setAddress("Bangkok, Thailand");
+            return userRepository.save(user);
+        });
+    }
+
+    private User getOrCreateMarketplaceSeller(String username, String email, String password, String phone) {
+        return userRepository.findByEmail(email).map(user -> {
+            user.setUsername(username);
+            user.setPassword(passwordEncoder.encode(password));
+            user.setRole("SELLER");
+            user.setPhone(phone);
+            user.setAddress("Bangkok, Thailand");
+            return userRepository.save(user);
+        }).orElseGet(() -> {
+            User user = new User();
+            user.setUsername(username);
+            user.setEmail(email);
+            user.setPassword(passwordEncoder.encode(password));
+            user.setRole("SELLER");
+            user.setPhone(phone);
+            user.setAddress("Bangkok, Thailand");
+            return userRepository.save(user);
+        });
+    }
+
     private MarketplaceStore getOrCreateStore(Integer sellerUserId, String name, String slug, String description) {
-        return marketplaceStoreRepository.findByStoreSlug(slug).orElseGet(() -> {
+        return marketplaceStoreRepository.findByStoreSlug(slug).map(store -> {
+            store.setSellerUserId(sellerUserId);
+            store.setStoreStatus("APPROVED");
+            store.setStoreName(name);
+            store.setStoreDescription(description);
+            if (store.getProvince() == null) store.setProvince("Bangkok");
+            return marketplaceStoreRepository.save(store);
+        }).orElseGet(() -> {
             MarketplaceStore store = new MarketplaceStore();
             store.setSellerUserId(sellerUserId);
             store.setStoreName(name);
             store.setStoreSlug(slug);
             store.setStoreStatus("APPROVED");
             store.setStoreDescription(description);
+            store.setProvince("Bangkok");
             return marketplaceStoreRepository.save(store);
         });
     }
@@ -294,45 +426,56 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     private List<SeedProduct> sampleProducts() {
         return List.of(
                 // Optracard Official Store: 4 product types x 4 products.
-                seed("OFF-SIN-001", "Pikachu ex Special Illustration", "Single", "Pokemon", 760, 990, 6, OFFICIAL, null),
-                seed("OFF-SIN-002", "Monkey D. Luffy Leader Parallel", "Single", "One Piece", 1_450, 1_890, 4, OFFICIAL, null),
-                seed("OFF-SIN-003", "Dark Magician 25th Anniversary", "Single", "Yu-Gi-Oh!", 1_700, 2_190, 3, OFFICIAL, null),
-                seed("OFF-SIN-004", "Liliana of the Veil Borderless", "Single", "Magic: The Gathering", 1_050, 1_390, 5, OFFICIAL, null),
-                seed("OFF-BST-001", "Pokémon Journey Together Booster Pack", "Booster", "Pokemon", 118, 149, 36, OFFICIAL, null),
-                seed("OFF-BST-002", "One Piece OP-10 Royal Blood Booster", "Booster", "One Piece", 125, 159, 28, OFFICIAL, null),
-                seed("OFF-BST-003", "Yu-Gi-Oh! Alliance Insight Booster", "Booster", "Yu-Gi-Oh!", 105, 139, 40, OFFICIAL, null),
-                seed("OFF-BST-004", "MTG Aetherdrift Play Booster", "Booster", "Magic: The Gathering", 145, 189, 24, OFFICIAL, null),
-                seed("OFF-BOX-001", "Pokémon Journey Together Booster Box", "Booster Box", "Pokemon", 3_780, 4_590, 8, OFFICIAL, null),
-                seed("OFF-BOX-002", "One Piece OP-10 Booster Box", "Booster Box", "One Piece", 2_750, 3_390, 10, OFFICIAL, null),
-                seed("OFF-BOX-003", "Yu-Gi-Oh! Alliance Insight Box", "Booster Box", "Yu-Gi-Oh!", 2_090, 2_590, 7, OFFICIAL, null),
-                seed("OFF-BOX-004", "MTG Aetherdrift Play Booster Box", "Booster Box", "Magic: The Gathering", 4_250, 5_190, 6, OFFICIAL, null),
-                seed("OFF-ACC-001", "Optracard Matte Sleeves - Blue", "Accessories", "Pokemon", 170, 220, 48, OFFICIAL, null),
-                seed("OFF-ACC-002", "Premium Zip Binder 12-Pocket", "Accessories", "One Piece", 920, 1_190, 12, OFFICIAL, null),
-                seed("OFF-ACC-003", "Magnetic Card Holder 35pt", "Accessories", "Yu-Gi-Oh!", 115, 159, 60, OFFICIAL, null),
-                seed("OFF-ACC-004", "TCG Neoprene Playmat - Midnight", "Accessories", "Magic: The Gathering", 620, 790, 18, OFFICIAL, null),
+                seed("Pikachu ex Special Illustration", "Single", "Pokemon", 760, 990, 6, OFFICIAL, null),
+                seed("Monkey D. Luffy Leader Parallel", "Single", "One Piece", 1_450, 1_890, 4, OFFICIAL, null),
+                seed("Dark Magician 25th Anniversary", "Single", "Yu-Gi-Oh!", 1_700, 2_190, 3, OFFICIAL, null),
+                seed("Liliana of the Veil Borderless", "Single", "Magic: The Gathering", 1_050, 1_390, 5, OFFICIAL, null),
+                seed("Pokémon Journey Together Booster Pack", "Booster", "Pokemon", 118, 149, 36, OFFICIAL, null),
+                seed("One Piece OP-10 Royal Blood Booster", "Booster", "One Piece", 125, 159, 28, OFFICIAL, null),
+                seed("Yu-Gi-Oh! Alliance Insight Booster", "Booster", "Yu-Gi-Oh!", 105, 139, 40, OFFICIAL, null),
+                seed("MTG Aetherdrift Play Booster", "Booster", "Magic: The Gathering", 145, 189, 24, OFFICIAL, null),
+                seed("Pokémon Journey Together Booster Box", "Booster Box", "Pokemon", 3_780, 4_590, 8, OFFICIAL, null),
+                seed("One Piece OP-10 Booster Box", "Booster Box", "One Piece", 2_750, 3_390, 10, OFFICIAL, null),
+                seed("Yu-Gi-Oh! Alliance Insight Box", "Booster Box", "Yu-Gi-Oh!", 2_090, 2_590, 7, OFFICIAL, null),
+                seed("MTG Aetherdrift Play Booster Box", "Booster Box", "Magic: The Gathering", 4_250, 5_190, 6, OFFICIAL, null),
+                seed("Optracard Matte Sleeves - Blue", "Accessories", "Pokemon", 170, 220, 48, OFFICIAL, null),
+                seed("Premium Zip Binder 12-Pocket", "Accessories", "One Piece", 920, 1_190, 12, OFFICIAL, null),
+                seed("Magnetic Card Holder 35pt", "Accessories", "Yu-Gi-Oh!", 115, 159, 60, OFFICIAL, null),
+                seed("TCG Neoprene Playmat - Midnight", "Accessories", "Magic: The Gathering", 620, 790, 18, OFFICIAL, null),
 
                 // Approved seller listings: the same 4 product types x 4 products.
-                seed("MKT-SIN-001", "Gengar VMAX Alternate Art", "Single", "Pokemon", 4_800, 5_450, 1, MARKETPLACE, "card-corner-bkk"),
-                seed("MKT-SIN-002", "Nami Manga Rare", "Single", "One Piece", 19_500, 22_900, 1, MARKETPLACE, "moonlight-tcg"),
-                seed("MKT-SIN-003", "Blue-Eyes White Dragon Ghost Rare", "Single", "Yu-Gi-Oh!", 8_400, 9_900, 2, MARKETPLACE, "rare-finds"),
-                seed("MKT-SIN-004", "Mana Crypt Borderless", "Single", "Magic: The Gathering", 5_100, 5_950, 1, MARKETPLACE, "shuffle-house"),
-                seed("MKT-BST-001", "Pokémon 151 Korean Booster Pack", "Booster", "Pokemon", 78, 109, 30, MARKETPLACE, "card-corner-bkk"),
-                seed("MKT-BST-002", "One Piece PRB-01 The Best Booster", "Booster", "One Piece", 135, 175, 22, MARKETPLACE, "moonlight-tcg"),
-                seed("MKT-BST-003", "Yu-Gi-Oh! Quarter Century Bonanza Pack", "Booster", "Yu-Gi-Oh!", 165, 210, 16, MARKETPLACE, "rare-finds"),
-                seed("MKT-BST-004", "MTG Foundations Collector Booster", "Booster", "Magic: The Gathering", 690, 820, 9, MARKETPLACE, "shuffle-house"),
-                seed("MKT-BOX-001", "Pokémon 151 Japanese Booster Box", "Booster Box", "Pokemon", 4_900, 5_650, 4, MARKETPLACE, "card-corner-bkk"),
-                seed("MKT-BOX-002", "One Piece PRB-01 Booster Box", "Booster Box", "One Piece", 3_250, 3_890, 5, MARKETPLACE, "moonlight-tcg"),
-                seed("MKT-BOX-003", "Yu-Gi-Oh! Rarity Collection Box", "Booster Box", "Yu-Gi-Oh!", 2_450, 2_950, 6, MARKETPLACE, "rare-finds"),
-                seed("MKT-BOX-004", "MTG Modern Horizons 3 Play Box", "Booster Box", "Magic: The Gathering", 6_800, 7_790, 3, MARKETPLACE, "shuffle-house"),
-                seed("MKT-ACC-001", "Used Pokémon Center Deck Box", "Accessories", "Pokemon", 210, 290, 7, MARKETPLACE, "card-corner-bkk"),
-                seed("MKT-ACC-002", "One Piece Straw Hat Playmat", "Accessories", "One Piece", 580, 720, 5, MARKETPLACE, "moonlight-tcg"),
-                seed("MKT-ACC-003", "Yu-Gi-Oh! 9-Pocket Collector Binder", "Accessories", "Yu-Gi-Oh!", 690, 850, 4, MARKETPLACE, "rare-finds"),
-                seed("MKT-ACC-004", "MTG Commander Deck Case", "Accessories", "Magic: The Gathering", 380, 490, 11, MARKETPLACE, "shuffle-house")
+                seed("Gengar VMAX Alternate Art", "Single", "Pokemon", 4_800, 5_450, 1, MARKETPLACE, "card-corner-bkk"),
+                seed("Nami Manga Rare", "Single", "One Piece", 19_500, 22_900, 1, MARKETPLACE, "moonlight-tcg"),
+                seed("Blue-Eyes White Dragon Ghost Rare", "Single", "Yu-Gi-Oh!", 8_400, 9_900, 2, MARKETPLACE, "rare-finds"),
+                seed("Mana Crypt Borderless", "Single", "Magic: The Gathering", 5_100, 5_950, 1, MARKETPLACE, "rare-finds"),
+                seed("Pokémon 151 Korean Booster Pack", "Booster", "Pokemon", 78, 109, 30, MARKETPLACE, "card-corner-bkk"),
+                seed("One Piece PRB-01 The Best Booster", "Booster", "One Piece", 135, 175, 22, MARKETPLACE, "moonlight-tcg"),
+                seed("Yu-Gi-Oh! Quarter Century Bonanza Pack", "Booster", "Yu-Gi-Oh!", 165, 210, 16, MARKETPLACE, "rare-finds"),
+                seed("MTG Foundations Collector Booster", "Booster", "Magic: The Gathering", 690, 820, 9, MARKETPLACE, "rare-finds"),
+                seed("Pokémon 151 Japanese Booster Box", "Booster Box", "Pokemon", 4_900, 5_650, 4, MARKETPLACE, "card-corner-bkk"),
+                seed("One Piece PRB-01 Booster Box", "Booster Box", "One Piece", 3_250, 3_890, 5, MARKETPLACE, "moonlight-tcg"),
+                seed("Yu-Gi-Oh! Rarity Collection Box", "Booster Box", "Yu-Gi-Oh!", 2_450, 2_950, 6, MARKETPLACE, "rare-finds"),
+                seed("MTG Modern Horizons 3 Play Box", "Booster Box", "Magic: The Gathering", 6_800, 7_790, 3, MARKETPLACE, "rare-finds"),
+                seed("Used Pokémon Center Deck Box", "Accessories", "Pokemon", 210, 290, 7, MARKETPLACE, "card-corner-bkk"),
+                seed("One Piece Straw Hat Playmat", "Accessories", "One Piece", 580, 720, 5, MARKETPLACE, "moonlight-tcg"),
+                seed("Yu-Gi-Oh! 9-Pocket Collector Binder", "Accessories", "Yu-Gi-Oh!", 690, 850, 4, MARKETPLACE, "rare-finds"),
+                seed("MTG Commander Deck Case", "Accessories", "Magic: The Gathering", 380, 490, 11, MARKETPLACE, "rare-finds"),
+
+                // AAA-Trading: ten Marketplace-only listings. None is sold by the Official Store.
+                seed("One Piece PRB-01 The Best Booster", "Booster", "One Piece", 128, 165, 18, MARKETPLACE, "aaa-trading"),
+                seed("Pokémon Shining Fates Elite Trainer Box", "Booster Box", "Pokemon", 1_850, 2_290, 3, MARKETPLACE, "aaa-trading"),
+                seed("One Piece OP-08 Two Legends Booster Box", "Booster Box", "One Piece", 2_650, 3_190, 4, MARKETPLACE, "aaa-trading"),
+                seed("Yu-Gi-Oh! Maze of the Master Booster", "Booster", "Yu-Gi-Oh!", 118, 155, 20, MARKETPLACE, "aaa-trading"),
+                seed("MTG Innistrad Remastered Play Booster", "Booster", "Magic: The Gathering", 175, 225, 14, MARKETPLACE, "aaa-trading"),
+                seed("Pokémon Eevee Heroes Japanese Booster Box", "Booster Box", "Pokemon", 8_900, 10_500, 2, MARKETPLACE, "aaa-trading"),
+                seed("One Piece ST-17 Donquixote Doflamingo Starter Deck", "Accessories", "One Piece", 420, 560, 8, MARKETPLACE, "aaa-trading"),
+                seed("Yu-Gi-Oh! Legacy of Destruction Box", "Booster Box", "Yu-Gi-Oh!", 1_650, 2_090, 5, MARKETPLACE, "aaa-trading"),
+                seed("MTG Final Fantasy Collector Booster", "Booster", "Magic: The Gathering", 1_190, 1_490, 6, MARKETPLACE, "aaa-trading"),
+                seed("Pokémon Prismatic Evolutions Binder Collection", "Accessories", "Pokemon", 1_080, 1_390, 7, MARKETPLACE, "aaa-trading")
         );
     }
 
     private SeedProduct seed(
-            String sku,
             String name,
             String type,
             String game,
@@ -343,7 +486,6 @@ public class LocalCatalogSeeder implements ApplicationRunner {
             String storeSlug
     ) {
         return new SeedProduct(
-                sku,
                 name,
                 type,
                 game,
@@ -357,7 +499,6 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     }
 
     private record SeedProduct(
-            String sku,
             String name,
             String type,
             String game,
@@ -368,4 +509,38 @@ public class LocalCatalogSeeder implements ApplicationRunner {
             String storeSlug,
             String description
     ) {}
+
+    private static Map<String, ProductMetadata> createProductMetadata() {
+        Map<String, ProductMetadata> metadata = new HashMap<>();
+        metadata.put("Pikachu ex Special Illustration", new ProductMetadata("Surging Sparks [SV8]", "English"));
+        metadata.put("Monkey D. Luffy Leader Parallel", new ProductMetadata("Romance Dawn [OP01]", "English"));
+        metadata.put("Dark Magician 25th Anniversary", new ProductMetadata("Quarter Century Chronicle", "English"));
+        metadata.put("Liliana of the Veil Borderless", new ProductMetadata("Dominaria United [DMU]", "English"));
+        metadata.put("Pokémon Journey Together Booster Pack", new ProductMetadata("Scarlet & Violet—Journey Together [SV9]", "English"));
+        metadata.put("Pokémon Journey Together Booster Box", new ProductMetadata("Scarlet & Violet—Journey Together [SV9]", "English"));
+        metadata.put("One Piece OP-10 Royal Blood Booster", new ProductMetadata("Royal Blood [OP-10]", "Japanese"));
+        metadata.put("One Piece OP-10 Booster Box", new ProductMetadata("Royal Blood [OP-10]", "Japanese"));
+        metadata.put("Yu-Gi-Oh! Alliance Insight Booster", new ProductMetadata("Alliance Insight [ALIN]", "English"));
+        metadata.put("Yu-Gi-Oh! Alliance Insight Box", new ProductMetadata("Alliance Insight [ALIN]", "English"));
+        metadata.put("MTG Aetherdrift Play Booster", new ProductMetadata("Aetherdrift [DFT]", "English"));
+        metadata.put("MTG Aetherdrift Play Booster Box", new ProductMetadata("Aetherdrift [DFT]", "English"));
+        metadata.put("Gengar VMAX Alternate Art", new ProductMetadata("Fusion Strike [SWSH8]", "English"));
+        metadata.put("Nami Manga Rare", new ProductMetadata("Romance Dawn [OP01]", "English"));
+        metadata.put("Blue-Eyes White Dragon Ghost Rare", new ProductMetadata("Ghosts From the Past: The 2nd Haunting [GFP2]", "English"));
+        metadata.put("Mana Crypt Borderless", new ProductMetadata("Double Masters 2022 [2X2]", "English"));
+        metadata.put("Pokémon 151 Korean Booster Pack", new ProductMetadata("Pokémon Card 151", "Korean"));
+        metadata.put("One Piece PRB-01 The Best Booster", new ProductMetadata("Premium Booster -The Best- [PRB-01]", "Japanese"));
+        metadata.put("One Piece PRB-01 Booster Box", new ProductMetadata("Premium Booster -The Best- [PRB-01]", "Japanese"));
+        metadata.put("Yu-Gi-Oh! Quarter Century Bonanza Pack", new ProductMetadata("Quarter Century Bonanza", "English"));
+        metadata.put("MTG Foundations Collector Booster", new ProductMetadata("Magic: The Gathering Foundations [FDN]", "English"));
+        metadata.put("Pokémon 151 Japanese Booster Box", new ProductMetadata("Pokémon Card 151", "Japanese"));
+        metadata.put("Yu-Gi-Oh! Rarity Collection Box", new ProductMetadata("25th Anniversary Rarity Collection", "English"));
+        metadata.put("MTG Modern Horizons 3 Play Box", new ProductMetadata("Modern Horizons 3 [MH3]", "English"));
+        metadata.put("Monkey D. Luffy OP-16", new ProductMetadata("OP-16", "Japanese"));
+        metadata.put("Raichu & Alolan Raichu GX", new ProductMetadata("Unified Minds [SM11]", "English"));
+        metadata.put("พี่หน่วง พิธีกรผมสวย", new ProductMetadata("BT07 Life of หน่วง", "Thai"));
+        return metadata;
+    }
+
+    private record ProductMetadata(String productSet, String language) {}
 }
