@@ -38,6 +38,14 @@ public class ProductService {
         return productRepository.save(product);
     }
 
+    @Transactional(readOnly = true)
+    public List<Product> searchProducts(String q) {
+        if (q == null || q.trim().isEmpty()) {
+            return productRepository.findAll();
+        }
+        return productRepository.searchByKeyword(q.trim());
+    }
+
     private CatalogProductResponse toCatalogResponse(Product product) {
         String source = product.getListingSource() == null ? "OFFICIAL" : product.getListingSource();
         CatalogStoreResponse store = "MARKETPLACE".equalsIgnoreCase(source)

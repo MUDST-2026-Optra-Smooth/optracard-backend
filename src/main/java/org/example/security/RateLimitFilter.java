@@ -34,7 +34,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         // Browser CORS preflight requests are not application requests and
         // must not consume a visitor's API quota.
-        return "OPTIONS".equalsIgnoreCase(request.getMethod());
+        String uri = request.getRequestURI();
+        return "OPTIONS".equalsIgnoreCase(request.getMethod())
+                || uri.startsWith("/swagger-ui")
+                || uri.startsWith("/v3/api-docs");
     }
 
     @Override

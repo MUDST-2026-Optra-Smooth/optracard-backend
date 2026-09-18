@@ -1,5 +1,7 @@
 package org.example.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.example.dto.*;
 import org.example.service.AuthService;
 import org.springframework.http.ResponseEntity;
@@ -9,6 +11,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
+@Tag(name = "Authentication", description = "User registration and login endpoints")
 public class AuthController {
 
     private final AuthService authService;
@@ -17,6 +20,7 @@ public class AuthController {
         this.authService = authService;
     }
 
+    @Operation(summary = "Register a new user")
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
         try {
@@ -27,6 +31,7 @@ public class AuthController {
         }
     }
 
+    @Operation(summary = "Log in with email and password")
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody AuthRequest request) {
         try {

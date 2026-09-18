@@ -48,6 +48,11 @@ public class SecurityConfig {
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
+                        ).permitAll()
                         .requestMatchers("/api/auth/**").permitAll() // เปิดให้เส้นทาง Auth เข้าได้อิสระ
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                         .anyRequest().authenticated() // เส้นทางอื่นต้องมี Token

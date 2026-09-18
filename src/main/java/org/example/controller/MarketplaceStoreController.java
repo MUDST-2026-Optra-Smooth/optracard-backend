@@ -1,5 +1,7 @@
 package org.example.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.example.dto.StoreApplicationRequest;
 import org.example.dto.StoreApplicationResponse;
 import org.example.service.MarketplaceStoreService;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/stores")
 @CrossOrigin(origins = "http://localhost:5173")
+@Tag(name = "Marketplace Store", description = "Seller store application and management endpoints")
 public class MarketplaceStoreController {
     private final MarketplaceStoreService storeService;
 
@@ -24,12 +27,14 @@ public class MarketplaceStoreController {
         this.storeService = storeService;
     }
 
+    @Operation(summary = "Get current user's marketplace store application")
     @GetMapping("/my")
     public ResponseEntity<StoreApplicationResponse> getMyStore(Authentication authentication) {
         StoreApplicationResponse response = storeService.getMyStore(authentication.getName());
         return response == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "Submit a new store application")
     @PostMapping("/my")
     public ResponseEntity<StoreApplicationResponse> submit(
             Authentication authentication, @RequestBody StoreApplicationRequest request) {
@@ -37,6 +42,7 @@ public class MarketplaceStoreController {
                 .body(storeService.saveApplication(authentication.getName(), request));
     }
 
+    @Operation(summary = "Update store application")
     @PutMapping("/my")
     public ResponseEntity<StoreApplicationResponse> update(
             Authentication authentication, @RequestBody StoreApplicationRequest request) {
