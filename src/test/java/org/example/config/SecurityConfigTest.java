@@ -72,6 +72,6 @@ class SecurityConfigTest {
 
         List<String> exposedHeaders = config.getExposedHeaders();
         assertNotNull(exposedHeaders);
-        assertTrue(exposedHeaders.containsAll(List.of("Authorization", "Content-Type", "Retry-After")));
+        assertTrue(exposedHeaders.containsAll(List.of("Authorization", "Content-Type", "Retry-After", "X-XSRF-TOKEN")));
     }
 }
