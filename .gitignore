@@ -37,3 +37,6 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+# ซ่อนไฟล์ตั้งค่าส่วนตัวที่มีรหัสผ่าน
+application-local.properties

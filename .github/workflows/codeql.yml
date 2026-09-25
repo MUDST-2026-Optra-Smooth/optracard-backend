@@ -1,0 +1,40 @@
+name: "CodeQL Backend Analysis"
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  analyze:
+    name: Analyze Java
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java-kotlin
+          # สามารถเพิ่ม queries: security-extended,security-and-quality เพื่อการสแกนที่เข้มข้นขึ้นได้
+
+      - name: Build project with Maven
+        # ให้ CodeQL สังเกตการณ์ขั้นตอนการ Compile โค้ด (ข้าม Test ไปเพื่อความรวดเร็ว)
+        run: mvn clean package -DskipTests
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
