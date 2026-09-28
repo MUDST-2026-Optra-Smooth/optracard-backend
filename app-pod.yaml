@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: optracard-backend
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: optracard-backend-pod
+  namespace: optracard-backend
+  labels:
+    app: optracard-backend
+spec:
+  containers:
+    - name: optracard-backend-container
+      image: saksitboom/optracard-backend:latest
+      imagePullPolicy: IfNotPresent
+      ports:
+        - containerPort: 8080
