@@ -182,7 +182,6 @@ public class AdminDataService {
     public AdminData.OrderResponse getOrder(Integer orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
-        order.getItems().size();
         return toOrderResponse(order, productMap(), userMap());
     }
 
@@ -203,7 +202,6 @@ public class AdminDataService {
         if (shippingNow) {
             notificationService.createShippingNotification(saved);
         }
-        saved.getItems().size();
         return toOrderResponse(saved, productMap(), userMap());
     }
 
