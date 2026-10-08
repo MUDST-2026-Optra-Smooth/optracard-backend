@@ -31,17 +31,23 @@ public class SellerService {
     private final UserRepository userRepository;
     private final CardGameRepository cardGameRepository;
     private final OrderRepository orderRepository;
+    private final OrderNotificationService notificationService;
+    private final ProductDeletionService productDeletionService;
 
     public SellerService(ProductRepository productRepository,
                          MarketplaceStoreRepository storeRepository,
                          UserRepository userRepository,
                          CardGameRepository cardGameRepository,
-                         OrderRepository orderRepository) {
+                         OrderRepository orderRepository,
+                         OrderNotificationService notificationService,
+                         ProductDeletionService productDeletionService) {
         this.productRepository = productRepository;
         this.storeRepository = storeRepository;
         this.userRepository = userRepository;
         this.cardGameRepository = cardGameRepository;
         this.orderRepository = orderRepository;
+        this.notificationService = notificationService;
+        this.productDeletionService = productDeletionService;
     }
 
     @Transactional(readOnly = true)
@@ -97,12 +103,23 @@ public class SellerService {
     }
 
     @Transactional
-    public void deactivateProduct(String email, Integer productId) {
+    public void deleteProduct(String email, Integer productId) {
         MarketplaceStore store = requireApprovedStore(email);
         Product product = productRepository.findByProIdAndStore_StoreId(productId, store.getStoreId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Product not found"));
-        product.setIsActive(false);
-        productRepository.save(product);
+        productDeletionService.permanentlyDelete(product);
+    }
+
+    @Transactional
+    public SellerProductResponse updateProductActive(String email, Integer productId, Boolean active) {
+        if (active == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Active status is required");
+        }
+        MarketplaceStore store = requireApprovedStore(email);
+        Product product = productRepository.findByProIdAndStore_StoreId(productId, store.getStoreId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Product not found"));
+        product.setIsActive(active);
+        return toProductResponse(productRepository.saveAndFlush(product));
     }
 
     @Transactional(readOnly = true)
@@ -113,7 +130,7 @@ public class SellerService {
     }
 
     @Transactional
-    public SellerOrderResponse updateOrderStatus(String email, Integer orderId, String status) {
+    public SellerOrderResponse updateOrderStatus(String email, Integer orderId, String status, String trackingNumber) {
         MarketplaceStore store = requireApprovedStore(email);
         String normalized = status == null ? "" : status.trim().toUpperCase();
         if (!List.of("PROCESSING", "SHIPPED", "DELIVERED", "CANCELED").contains(normalized)) {
@@ -121,8 +138,16 @@ public class SellerService {
         }
         Order order = orderRepository.findByOrderIdAndStoreId(orderId, store.getStoreId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
+        boolean shippingNow = "SHIPPED".equals(normalized) && !"SHIPPED".equalsIgnoreCase(order.getStatus());
+        if (shippingNow) {
+            order.setTrackingNumber(requireTrackingNumber(trackingNumber));
+        }
         order.setStatus(normalized.substring(0, 1) + normalized.substring(1).toLowerCase());
-        return toOrderResponse(orderRepository.saveAndFlush(order));
+        Order saved = orderRepository.saveAndFlush(order);
+        if (shippingNow) {
+            notificationService.createShippingNotification(saved);
+        }
+        return toOrderResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -139,10 +164,10 @@ public class SellerService {
 
     private void apply(Product product, SellerProductRequest request, MarketplaceStore store, Integer templateProductId) {
         Product template = templateProductId == null ? null : productRepository.findByProId(templateProductId)
-                .filter(this::isApprovedMarketplaceTemplate)
+                .filter(this::isAvailableCatalogTemplate)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
-                        "The selected Marketplace product is no longer available as a template"
+                        "The selected catalog product is no longer available as a template"
                 ));
         if (template != null && template.getStore() != null
                 && template.getStore().getStoreId().equals(store.getStoreId())
@@ -169,13 +194,6 @@ public class SellerService {
             productName = request.name().trim();
             productType = request.type().trim();
         }
-        if (productRepository.existsByProNameIgnoreCaseAndProTypeAndGameIdAndListingSource(
-                productName, productType, game.getGameId(), "OFFICIAL")) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "This product is already sold by Optracard Official Store and cannot be listed on Marketplace"
-            );
-        }
         product.setGameId(game.getGameId());
         product.setProName(productName);
         product.setProType(productType);
@@ -189,9 +207,14 @@ public class SellerService {
         product.setTemplateProductId(template == null ? null : template.getProId());
     }
 
-    private boolean isApprovedMarketplaceTemplate(Product product) {
+    private boolean isAvailableCatalogTemplate(Product product) {
+        if (!Boolean.TRUE.equals(product.getIsActive())) {
+            return false;
+        }
+        if ("OFFICIAL".equalsIgnoreCase(product.getListingSource())) {
+            return true;
+        }
         return "MARKETPLACE".equalsIgnoreCase(product.getListingSource())
-                && Boolean.TRUE.equals(product.getIsActive())
                 && "APPROVED".equalsIgnoreCase(product.getApprovalStatus())
                 && product.getStore() != null
                 && "APPROVED".equalsIgnoreCase(product.getStore().getStoreStatus());
@@ -233,7 +256,7 @@ public class SellerService {
         }).toList();
         return new SellerOrderResponse(order.getOrderId(), orderNumber(order), order.getUserId(), order.getCreatedAt(),
                 order.getTotalPrice(), displayStatus(order.getStatus()), order.getPaymentStatus(), order.getShippingMethod(),
-                order.getShippingAddress(), order.getRecipientName(), order.getRecipientPhone(), items);
+                order.getShippingAddress(), order.getRecipientName(), order.getRecipientPhone(), order.getTrackingNumber(), items);
     }
 
     private String orderNumber(Order order) {
@@ -250,5 +273,17 @@ public class SellerService {
             case "CANCELED", "CANCELLED" -> "Canceled";
             default -> "Processing";
         };
+    }
+
+    private String requireTrackingNumber(String trackingNumber) {
+        String normalized = trackingNumber == null ? "" : trackingNumber.trim();
+        if (normalized.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A tracking number is required before an order can be marked as shipped");
+        }
+        if (normalized.length() > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tracking number must be 100 characters or fewer");
+        }
+        return normalized;
     }
 }

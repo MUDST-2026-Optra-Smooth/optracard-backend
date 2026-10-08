@@ -35,17 +35,23 @@ public class AdminDataService {
     private final MarketplaceStoreRepository storeRepository;
     private final CardGameRepository cardGameRepository;
     private final UserRepository userRepository;
+    private final OrderNotificationService notificationService;
+    private final ProductDeletionService productDeletionService;
 
     public AdminDataService(ProductRepository productRepository,
                             OrderRepository orderRepository,
                             MarketplaceStoreRepository storeRepository,
                             CardGameRepository cardGameRepository,
-                            UserRepository userRepository) {
+                            UserRepository userRepository,
+                             OrderNotificationService notificationService,
+                             ProductDeletionService productDeletionService) {
         this.productRepository = productRepository;
         this.orderRepository = orderRepository;
         this.storeRepository = storeRepository;
         this.cardGameRepository = cardGameRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
+        this.productDeletionService = productDeletionService;
     }
 
     @Transactional(readOnly = true)
@@ -88,8 +94,11 @@ public class AdminDataService {
                 .filter(this::isOfficial).filter(product -> Boolean.TRUE.equals(product.getIsActive())).count();
         int activeMarketplaceProducts = (int) products.stream()
                 .filter(product -> "MARKETPLACE".equalsIgnoreCase(product.getListingSource()))
+                .filter(product -> "APPROVED".equalsIgnoreCase(product.getApprovalStatus()))
                 .filter(product -> Boolean.TRUE.equals(product.getIsActive()))
-                .filter(product -> "APPROVED".equalsIgnoreCase(product.getApprovalStatus())).count();
+                .filter(product -> product.getStore() != null
+                        && "APPROVED".equalsIgnoreCase(product.getStore().getStoreStatus()))
+                .count();
         int pendingStoreVerifications = (int) storeRepository.findAll().stream()
                 .filter(store -> "PENDING".equalsIgnoreCase(store.getStoreStatus())).count();
         int pendingMarketplaceRequests = (int) products.stream()
@@ -138,11 +147,21 @@ public class AdminDataService {
     }
 
     @Transactional
-    public void deactivateOfficialProduct(Integer productId) {
+    public AdminData.ProductResponse updateOfficialProductActive(Integer productId, Boolean active) {
+        if (active == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Active status is required");
+        }
         Product product = productRepository.findByProId(productId).filter(this::isOfficial)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Official product not found"));
-        product.setIsActive(false);
-        productRepository.save(product);
+        product.setIsActive(active);
+        return toProductResponse(productRepository.saveAndFlush(product));
+    }
+
+    @Transactional
+    public void deleteOfficialProduct(Integer productId) {
+        Product product = productRepository.findByProId(productId).filter(this::isOfficial)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Official product not found"));
+        productDeletionService.permanentlyDelete(product);
     }
 
     @Transactional(readOnly = true)
@@ -168,15 +187,22 @@ public class AdminDataService {
     }
 
     @Transactional
-    public AdminData.OrderResponse updateOrderStatus(Integer orderId, String status) {
+    public AdminData.OrderResponse updateOrderStatus(Integer orderId, String status, String trackingNumber) {
         String normalized = status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
         if (!List.of("PROCESSING", "SHIPPED", "DELIVERED", "CANCELED", "CANCELLED").contains(normalized)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid order status");
         }
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
+        boolean shippingNow = "SHIPPED".equals(normalized) && !"SHIPPED".equalsIgnoreCase(order.getStatus());
+        if (shippingNow) {
+            order.setTrackingNumber(requireTrackingNumber(trackingNumber));
+        }
         order.setStatus(displayStatus(normalized));
         Order saved = orderRepository.saveAndFlush(order);
+        if (shippingNow) {
+            notificationService.createShippingNotification(saved);
+        }
         saved.getItems().size();
         return toOrderResponse(saved, productMap(), userMap());
     }
@@ -275,7 +301,7 @@ public class AdminDataService {
         return new AdminData.OrderResponse(order.getOrderId(), orderNumber(order), order.getUserId(),
                 user == null ? "Unknown customer" : user.getUsername(), order.getCreatedAt(), order.getTotalPrice(),
                 order.getSource(), order.getStoreId(), order.getStoreName(), displayStatus(order.getStatus()),
-                order.getPaymentStatus(), order.getShippingMethod(), order.getShippingAddress(), order.getRecipientName(),
+                order.getPaymentStatus(), order.getPaymentMethod(), order.getShippingMethod(), order.getShippingAddress(), order.getRecipientName(),
                 order.getRecipientPhone(), order.getTrackingNumber(), items);
     }
 
@@ -319,5 +345,17 @@ public class AdminDataService {
     }
     private String blankToNull(String value) {
         return value == null || value.trim().isEmpty() ? null : value.trim();
+    }
+
+    private String requireTrackingNumber(String trackingNumber) {
+        String normalized = trackingNumber == null ? "" : trackingNumber.trim();
+        if (normalized.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A tracking number is required before an order can be marked as shipped");
+        }
+        if (normalized.length() > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tracking number must be 100 characters or fewer");
+        }
+        return normalized;
     }
 }

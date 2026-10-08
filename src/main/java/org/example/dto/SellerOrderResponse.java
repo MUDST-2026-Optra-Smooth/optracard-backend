@@ -15,5 +15,6 @@ public record SellerOrderResponse(
         String shippingAddress,
         String recipientName,
         String recipientPhone,
+        String trackingNumber,
         List<OrderItemResponse> items
 ) {}
