@@ -147,4 +147,24 @@ class SellerServiceTest {
         assertEquals(false, result.active());
         verify(productRepository).saveAndFlush(listing);
     }
+
+    @Test
+    void deleteProduct_delegatesPermanentRemovalForTheSellersOwnListing() {
+        User seller = new User();
+        seller.setUaId(7);
+        MarketplaceStore sellerStore = new MarketplaceStore();
+        sellerStore.setStoreId(9);
+        sellerStore.setStoreStatus("APPROVED");
+        Product listing = new Product();
+        listing.setProId(12);
+        listing.setStore(sellerStore);
+
+        when(userRepository.findByEmail("seller@example.test")).thenReturn(Optional.of(seller));
+        when(storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(7)).thenReturn(Optional.of(sellerStore));
+        when(productRepository.findByProIdAndStore_StoreId(12, 9)).thenReturn(Optional.of(listing));
+
+        sellerService.deleteProduct("seller@example.test", 12);
+
+        verify(productDeletionService).permanentlyDelete(listing);
+    }
 }

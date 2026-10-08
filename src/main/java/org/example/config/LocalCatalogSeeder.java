@@ -300,26 +300,13 @@ public class LocalCatalogSeeder implements ApplicationRunner {
         CardGame onePiece = getOrCreateGame("One Piece", "One Piece Card Game");
         // Older local data exposed duplicate names in the selector. Move every
         // listing to the canonical name before removing the unused game rows.
-        mergeLegacyGame("Pokemon TCG", pokemon);
-        mergeLegacyGame("One Piece Card Game", onePiece);
+        LegacyCardGameNormalizer.merge("Pokemon TCG", pokemon, cardGameRepository, productRepository);
+        LegacyCardGameNormalizer.merge("One Piece Card Game", onePiece, cardGameRepository, productRepository);
         games.put("Pokemon", pokemon);
         games.put("One Piece", onePiece);
         games.put("Magic: The Gathering", getOrCreateGame("Magic: The Gathering", "Magic: The Gathering"));
         games.put("Yu-Gi-Oh!", getOrCreateGame("Yu-Gi-Oh!", "Yu-Gi-Oh! Trading Card Game"));
         return games;
-    }
-
-    private void mergeLegacyGame(String legacyName, CardGame canonicalGame) {
-        cardGameRepository.findByGameNameIgnoreCase(legacyName)
-                .filter(legacyGame -> !legacyGame.getGameId().equals(canonicalGame.getGameId()))
-                .ifPresent(legacyGame -> {
-                    List<Product> products = productRepository.findByGameId(legacyGame.getGameId());
-                    products.forEach(product -> product.setGameId(canonicalGame.getGameId()));
-                    productRepository.saveAll(products);
-                    productRepository.flush();
-                    cardGameRepository.delete(legacyGame);
-                    cardGameRepository.flush();
-                });
     }
 
     private CardGame getOrCreateGame(String name, String description) {
