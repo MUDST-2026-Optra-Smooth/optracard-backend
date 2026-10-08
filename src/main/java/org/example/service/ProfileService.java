@@ -90,7 +90,7 @@ public class ProfileService {
     private ProfileResponse toProfileResponse(User user) {
 
         List<CollectionItemResponse> collection = orderItemRepository
-                .findPurchasedCardsByUserId(user.getUaId())
+                .findDeliveredCardsByUserId(user.getUaId())
                 .stream()
                 .map(this::toCollectionItem)
                 .toList();

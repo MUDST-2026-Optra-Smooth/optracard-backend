@@ -18,6 +18,8 @@ public final class AdminData {
             String imageUrl, String productSet, String language, String description
     ) {}
 
+    public record ActiveRequest(Boolean active) {}
+
     public record CardGameResponse(Integer id, String name) {}
 
     public record OrderItemResponse(
@@ -27,11 +29,11 @@ public final class AdminData {
     public record OrderResponse(
             Integer id, String orderNumber, Integer buyerId, String buyerName, LocalDateTime createdAt,
             Double total, String source, Integer storeId, String storeName, String status, String paymentStatus,
-            String shippingMethod, String shippingAddress, String recipientName, String recipientPhone,
+            String paymentMethod, String shippingMethod, String shippingAddress, String recipientName, String recipientPhone,
             String trackingNumber, List<OrderItemResponse> items
     ) {}
 
-    public record OrderStatusRequest(String status) {}
+    public record OrderStatusRequest(String status, String trackingNumber) {}
 
     public record StoreResponse(
             Integer storeId, String storeSlug, String storeStatus, String storeName, String storeDescription,

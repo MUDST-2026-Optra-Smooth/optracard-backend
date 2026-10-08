@@ -59,9 +59,17 @@ public class SellerController {
         return sellerService.updateProduct(authentication.getName(), id, request);
     }
 
+    @PutMapping("/products/{id}/active")
+    public SellerProductResponse updateProductActive(Authentication authentication,
+                                                     @PathVariable Integer id,
+                                                     @RequestBody ActiveRequest request) {
+        return sellerService.updateProductActive(authentication.getName(), id,
+                request == null ? null : request.active());
+    }
+
     @DeleteMapping("/products/{id}")
-    public ResponseEntity<Void> deactivate(Authentication authentication, @PathVariable Integer id) {
-        sellerService.deactivateProduct(authentication.getName(), id);
+    public ResponseEntity<Void> delete(Authentication authentication, @PathVariable Integer id) {
+        sellerService.deleteProduct(authentication.getName(), id);
         return ResponseEntity.noContent().build();
     }
 
@@ -74,8 +82,10 @@ public class SellerController {
     public SellerOrderResponse updateOrderStatus(Authentication authentication,
                                                   @PathVariable Integer id,
                                                   @RequestBody StatusRequest request) {
-        return sellerService.updateOrderStatus(authentication.getName(), id, request == null ? null : request.status());
+        return sellerService.updateOrderStatus(authentication.getName(), id, request == null ? null : request.status(),
+                request == null ? null : request.trackingNumber());
     }
 
-    public record StatusRequest(String status) {}
+    public record StatusRequest(String status, String trackingNumber) {}
+    public record ActiveRequest(Boolean active) {}
 }

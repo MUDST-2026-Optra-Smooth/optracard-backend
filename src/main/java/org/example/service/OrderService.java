@@ -132,7 +132,9 @@ public class OrderService {
         order.setStoreName(seller.storeName());
         order.setSource(seller.source());
         order.setPaymentMethod(payment);
-        order.setPaymentStatus("PENDING");
+        // Payment gateways are not connected in the current demo, so each
+        // completed checkout is treated as a successful simulated payment.
+        order.setPaymentStatus("PAID");
         order.setStatus("Processing");
         order.setShippingMethod(shipping);
         order.setShippingFee("standard".equalsIgnoreCase(shipping) ? STANDARD_DELIVERY_FEE : 0d);

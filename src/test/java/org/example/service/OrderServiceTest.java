@@ -89,6 +89,8 @@ class OrderServiceTest {
                 .filter(order -> "OFFICIAL".equals(order.getSource()))
                 .findFirst().orElseThrow();
         assertEquals("Optracard Official Store", officialOrder.getStoreName());
+        assertEquals("cash", officialOrder.getPaymentMethod());
+        assertEquals("PAID", officialOrder.getPaymentStatus());
         assertEquals(null, officialOrder.getStoreId());
         assertEquals(150d, officialOrder.getTotalPrice());
         assertEquals(10, officialOrder.getItems().get(0).getProductId());
