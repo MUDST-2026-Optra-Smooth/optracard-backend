@@ -101,5 +101,5 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           kubectl rollout status deployment/optracard-postgres -n optracard-backend --timeout=180s
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          kubectl rollout status deployment/optracard-backend-deployment -n optracard-backend --timeout=180s
+          kubectl rollout status deployment/optracard-backend-deployment -n optracard-backend --timeout=600s
           if ($LASTEXITCODE -ne 0) { exit 1 }
