@@ -3,6 +3,112 @@ kind: Namespace
 metadata:
   name: optracard-backend
 ---
+# Non-sensitive runtime configuration shared by the database and backend.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: optracard-backend-config
+  namespace: optracard-backend
+data:
+  POSTGRES_DB: optracard
+  SPRING_PROFILES_ACTIVE: local
+  SPRING_JPA_HIBERNATE_DDL_AUTO: update
+---
+# Demo-only values so the manifest can run as supplied. Replace these values
+# before using a shared or production cluster.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: optracard-backend-secrets
+  namespace: optracard-backend
+type: Opaque
+stringData:
+  POSTGRES_USER: admin
+  POSTGRES_PASSWORD: password
+  JWT_SECRET: change-this-demo-jwt-secret-before-production
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: optracard-postgres-data
+  namespace: optracard-backend
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: optracard-postgres
+  namespace: optracard-backend
+  labels:
+    app: optracard-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: optracard-postgres
+  template:
+    metadata:
+      labels:
+        app: optracard-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: optracard-backend-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: optracard-backend-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: optracard-backend-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: optracard-postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: optracard-postgres
+  namespace: optracard-backend
+spec:
+  selector:
+    app: optracard-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,9 +129,58 @@ spec:
       containers:
         - name: optracard-backend-container
           image: saksitboom/optracard-backend:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: optracard-backend-config
+                  key: SPRING_PROFILES_ACTIVE
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://optracard-postgres:5432/optracard
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: optracard-backend-secrets
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: optracard-backend-secrets
+                  key: POSTGRES_PASSWORD
+            - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+              valueFrom:
+                configMapKeyRef:
+                  name: optracard-backend-config
+                  key: SPRING_JPA_HIBERNATE_DDL_AUTO
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: optracard-backend-secrets
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /v3/api-docs
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /v3/api-docs
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1
+              memory: 1Gi
 ---
 apiVersion: v1
 kind: Service
