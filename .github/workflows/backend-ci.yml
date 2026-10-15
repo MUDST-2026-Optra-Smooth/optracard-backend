@@ -23,5 +23,27 @@ jobs:
           java-version: "17"
           cache: maven
 
-      - name: Build and run tests
+      - name: Build, Test, and Generate Coverage Report
         run: mvn --batch-mode --no-transfer-progress clean verify
+
+      - name: Upload JaCoCo Coverage Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jacoco-coverage-report
+          path: target/site/jacoco/
+          retention-days: 14
+
+      - name: Upload Surefire Test Results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: surefire-test-reports
+          path: target/surefire-reports/
+          retention-days: 7
+
+      - name: Validate Docker Container Build
+        run: docker build -t optracard-backend:test .
+
+      - name: Validate Kubernetes Manifests
+        run: kubectl apply --dry-run=client -f app-pod.yaml
