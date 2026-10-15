@@ -73,29 +73,33 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push backend image
-        shell: bash
+        shell: pwsh
         run: |
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/optracard-backend:${{ github.sha }} .
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/optracard-backend:${{ github.sha }}
+          docker build -t "${{ secrets.DOCKERHUB_USERNAME }}/optracard-backend:${{ github.sha }}" .
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/optracard-backend:${{ github.sha }}"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Configure Kubernetes access
         env:
           KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
-        shell: bash
+        shell: pwsh
         run: |
-          if [ -z "$KUBECONFIG_BASE64" ]; then
-            echo "::error::Missing GitHub Secret KUBECONFIG_BASE64. Add it in Settings > Secrets and variables > Actions."
+          if (-not $env:KUBECONFIG_BASE64) {
+            Write-Host "::error::Missing GitHub Secret KUBECONFIG_BASE64. Add it in Settings > Secrets and variables > Actions."
             exit 1
-          fi
-          mkdir -p "$HOME/.kube"
-          echo "$KUBECONFIG_BASE64" | base64 --decode > "$HOME/.kube/config"
+          }
+          New-Item -ItemType Directory -Force -Path "$HOME\.kube" | Out-Null
+          [IO.File]::WriteAllBytes("$HOME\.kube\config", [Convert]::FromBase64String($env:KUBECONFIG_BASE64))
 
       - name: Apply manifest and roll out backend
-        shell: bash
+        shell: pwsh
         run: |
           kubectl apply -f app-pod.yaml
-          kubectl set image deployment/optracard-backend-deployment \
-            optracard-backend-container=${{ secrets.DOCKERHUB_USERNAME }}/optracard-backend:${{ github.sha }} \
-            -n optracard-backend
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          kubectl set image deployment/optracard-backend-deployment optracard-backend-container=${{ secrets.DOCKERHUB_USERNAME }}/optracard-backend:${{ github.sha }} -n optracard-backend
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           kubectl rollout status deployment/optracard-postgres -n optracard-backend --timeout=180s
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           kubectl rollout status deployment/optracard-backend-deployment -n optracard-backend --timeout=180s
+          if ($LASTEXITCODE -ne 0) { exit 1 }
