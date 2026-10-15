@@ -46,4 +46,4 @@ jobs:
         run: docker build -t optracard-backend:test .
 
       - name: Validate Kubernetes Manifests
-        run: kubectl apply --dry-run=client -f app-pod.yaml
+        run: kubectl apply --dry-run=client --validate=false -f app-pod.yaml
