@@ -48,6 +48,8 @@ metadata:
     app: optracard-postgres
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: optracard-postgres
@@ -85,6 +87,7 @@ spec:
               command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
             initialDelaySeconds: 5
             periodSeconds: 5
+            timeoutSeconds: 5
           resources:
             requests:
               cpu: 100m
@@ -160,18 +163,25 @@ spec:
                 secretKeyRef:
                   name: optracard-backend-secrets
                   key: JWT_SECRET
+          startupProbe:
+            httpGet:
+              path: /v3/api-docs
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /v3/api-docs
               port: 8080
-            initialDelaySeconds: 30
+            initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 5
           livenessProbe:
             httpGet:
               path: /v3/api-docs
               port: 8080
-            initialDelaySeconds: 60
+            initialDelaySeconds: 10
             periodSeconds: 20
             timeoutSeconds: 5
           resources:
