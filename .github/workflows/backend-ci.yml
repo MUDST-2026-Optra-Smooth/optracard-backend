@@ -76,11 +76,14 @@ jobs:
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/optracard-backend:${{ github.sha }}
 
       - name: Configure Kubernetes access
-        if: secrets.KUBECONFIG_BASE64 != ''
         env:
           KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
         shell: bash
         run: |
+          if [ -z "$KUBECONFIG_BASE64" ]; then
+            echo "::error::Missing GitHub Secret KUBECONFIG_BASE64. Add it in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
           mkdir -p "$HOME/.kube"
           echo "$KUBECONFIG_BASE64" | base64 --decode > "$HOME/.kube/config"
 
