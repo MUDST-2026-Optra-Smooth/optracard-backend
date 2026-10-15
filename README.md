@@ -1,6 +1,6 @@
 # OptraCard Backend
 
-OptraCard is an enterprise-grade Trading Card Game (TCG) e-commerce and multi-vendor marketplace platform built with **Spring Boot 3**, **Java 21**, **Spring Security 6**, and **PostgreSQL**.
+OptraCard is a Trading Card Game (TCG) e-commerce and multi-vendor marketplace platform built with **Spring Boot 3**, **Java 17**, **Spring Security 6**, and **PostgreSQL**.
 
 The backend powers both the **Optracard Official Store** and a **Multi-Store Seller Marketplace**, supporting customer shopping experiences, merchant storefronts, operational administration, and executive super-admin oversight.
 
@@ -225,7 +225,7 @@ Restricted to `SELLER`, `ADMIN`, `SUPER_ADMIN`.
 | `GET` | `/api/seller/products/{id}` | Retrieve specific product listed by this seller | None |
 | `POST` | `/api/seller/products` | Create a new marketplace product (sets status to `PENDING` review) | `SellerProductRequest` |
 | `PUT` | `/api/seller/products/{id}` | Update product details (resets status to `PENDING` review) | `SellerProductRequest` |
-| `DELETE` | `/api/seller/products/{id}` | Soft-deactivate a marketplace listing | None |
+| `DELETE` | `/api/seller/products/{id}` | Permanently deletes a marketplace listing after seller confirmation | None |
 | `GET` | `/api/seller/orders` | Retrieve customer orders assigned to this seller's store | None |
 | `PUT` | `/api/seller/orders/{id}/status` | Update fulfillment status (`SHIPPED`, `DELIVERED`, `CANCELLED`) | Body: `{ "status": "..." }` |
 
@@ -242,7 +242,7 @@ Restricted to `ADMIN` and `SUPER_ADMIN`.
 | `GET` | `/api/admin/products/{id}` | Get specific official product details |
 | `POST` | `/api/admin/products` | Add new official product |
 | `PUT` | `/api/admin/products/{id}` | Update official product details |
-| `DELETE` | `/api/admin/products/{id}` | Deactivate official product |
+| `DELETE` | `/api/admin/products/{id}` | Permanently deletes an official product after admin confirmation |
 | `GET` | `/api/admin/orders` | List all platform orders across official and marketplace stores |
 | `GET` | `/api/admin/orders/{id}` | View detailed order breakdown |
 | `PUT` | `/api/admin/orders/{id}/status` | Update order status |
@@ -365,7 +365,7 @@ When running in `local` profile, the following demo accounts are available:
 
 ### Running with Docker Compose
 
-The repository includes a ready-to-run [docker-compose.yaml](file:///C:/Users/Acer/IdeaProjects/optracard-backend/docker-compose.yaml) that coordinates both PostgreSQL and the Spring Boot backend service:
+The repository includes a ready-to-run [`docker-compose.yaml`](./docker-compose.yaml) that coordinates both PostgreSQL and the Spring Boot backend service:
 
 ```bash
 # Start both PostgreSQL and OptraCard Backend
@@ -384,7 +384,7 @@ The services will be accessible at:
 
 ### Standalone Docker Image Build
 
-Build and run using the multi-stage [Dockerfile](file:///C:/Users/Acer/IdeaProjects/optracard-backend/Dockerfile):
+Build and run using the multi-stage [`Dockerfile`](./Dockerfile):
 
 ```bash
 # Build the container image
@@ -403,18 +403,23 @@ docker run -d -p 8080:8080 \
 
 ## Kubernetes Deployment (`app-pod.yaml`)
 
-OptraCard includes Kubernetes orchestration manifests in [app-pod.yaml](file:///C:/Users/Acer/IdeaProjects/optracard-backend/app-pod.yaml):
+OptraCard includes Kubernetes orchestration manifests in [`app-pod.yaml`](./app-pod.yaml):
 - **Namespace**: `optracard-backend`
-- **Deployment**: `optracard-backend-deployment` (2 replicas, CPU/Memory resource limits and requests, HTTP Liveness and Readiness probes on `/v3/api-docs`)
-- **Service**: `optracard-backend-service` (NodePort `30081`, forwarding port `8080` to containers)
+- **PostgreSQL**: a single-replica Deployment with a `1Gi` PersistentVolumeClaim and an internal ClusterIP Service
+- **Configuration**: ConfigMap for non-sensitive values and Secret for database credentials and JWT signing key
+- **Backend**: `optracard-backend-deployment` (2 replicas, resource requests/limits, HTTP readiness and liveness probes on `/v3/api-docs`)
+- **Public API Service**: `optracard-backend-service` (NodePort `30081`, forwarding port `8080` to containers)
+
+The Secret contains demo-only values so that a fresh cluster is runnable. Change `POSTGRES_PASSWORD` and `JWT_SECRET` in `app-pod.yaml` before deploying to a shared cluster.
 
 ### Applying to Kubernetes Cluster
 
 ```bash
-# 1. Apply the namespace, deployment, and service manifests
+# 1. Apply PostgreSQL, configuration, backend deployment, and services
 kubectl apply -f app-pod.yaml
 
-# 2. Check rollout status
+# 2. Check both rollouts
+kubectl rollout status deployment/optracard-postgres -n optracard-backend
 kubectl rollout status deployment/optracard-backend-deployment -n optracard-backend
 
 # 3. View running pods and services
@@ -450,16 +455,26 @@ Open `target/site/jacoco/index.html` in any web browser to inspect detailed line
 
 OptraCard enforces automated testing, security scanning, and code quality using GitHub Actions located in `.github/workflows/`:
 
-1. **Backend CI** ([`.github/workflows/backend-ci.yml`](file:///C:/Users/Acer/IdeaProjects/optracard-backend/.github/workflows/backend-ci.yml)):
+1. **Backend CI/CD** ([`.github/workflows/backend-ci.yml`](./.github/workflows/backend-ci.yml)):
    - Triggers on every push to any branch and pull request.
    - Sets up Temurin JDK 17 with Maven caching.
    - Runs `mvn --batch-mode --no-transfer-progress clean verify` (compilation, full JUnit test suite, and JaCoCo coverage analysis).
    - Automatically publishes JaCoCo coverage report artifacts.
    - Validates multi-stage Docker container build (`docker build`).
-   - Validates Kubernetes manifest integrity (`kubectl apply --dry-run=client -f app-pod.yaml`).
+    - Validates that all required Kubernetes resource types are present in `app-pod.yaml`.
+    - On a push to `main`, builds a versioned Docker image, pushes it to Docker Hub, applies the manifest, sets the deployed image to the commit SHA, and waits for both PostgreSQL and Backend rollouts.
+    - Deployment requires the GitHub secrets `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, and `KUBECONFIG_BASE64`.
 
-2. **CodeQL Backend Analysis** ([`.github/workflows/codeql.yml`](file:///C:/Users/Acer/IdeaProjects/optracard-backend/.github/workflows/codeql.yml)):
+`KUBECONFIG_BASE64` is the Base64 text of the kubeconfig that can reach the online cluster. On Windows PowerShell, generate it with:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$HOME\.kube\config"))
+```
+
+Use a kubeconfig with only the permissions needed to apply resources in the two OptraCard namespaces. If the Kubernetes API is not publicly reachable, use a self-hosted GitHub runner that can reach it instead of GitHub-hosted runners.
+
+2. **CodeQL Backend Analysis** ([`.github/workflows/codeql.yml`](./.github/workflows/codeql.yml)):
    - Scans Java codebase for Common Weakness Enumerations (CWE), injection vulnerabilities, and security flaws.
 
-3. **Qodana Code Quality** ([`.github/workflows/qodana_code_quality.yml`](file:///C:/Users/Acer/IdeaProjects/optracard-backend/.github/workflows/qodana_code_quality.yml)):
+3. **Qodana Code Quality** ([`.github/workflows/qodana_code_quality.yml`](./.github/workflows/qodana_code_quality.yml)):
    - JetBrains static code analysis engine to ensure adherence to Java and Spring Boot design patterns.
