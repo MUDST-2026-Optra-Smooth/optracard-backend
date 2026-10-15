@@ -1,4 +1,4 @@
-name: Backend CI
+name: Optracard-Backend CI
 
 on:
   push:
