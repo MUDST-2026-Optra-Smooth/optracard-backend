@@ -2,10 +2,12 @@ package org.example.config;
 
 import org.example.model.CardGame;
 import org.example.model.MarketplaceStore;
+import org.example.model.Order;
 import org.example.model.Product;
 import org.example.model.User;
 import org.example.repository.CardGameRepository;
 import org.example.repository.MarketplaceStoreRepository;
+import org.example.repository.OrderRepository;
 import org.example.repository.ProductRepository;
 import org.example.repository.UserRepository;
 import org.springframework.boot.ApplicationArguments;
@@ -77,6 +79,7 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     private final ProductRepository productRepository;
     private final CardGameRepository cardGameRepository;
     private final MarketplaceStoreRepository marketplaceStoreRepository;
+    private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
@@ -84,12 +87,14 @@ public class LocalCatalogSeeder implements ApplicationRunner {
             ProductRepository productRepository,
             CardGameRepository cardGameRepository,
             MarketplaceStoreRepository marketplaceStoreRepository,
+            OrderRepository orderRepository,
             UserRepository userRepository,
             PasswordEncoder passwordEncoder
     ) {
         this.productRepository = productRepository;
         this.cardGameRepository = cardGameRepository;
         this.marketplaceStoreRepository = marketplaceStoreRepository;
+        this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
     }
@@ -104,7 +109,6 @@ public class LocalCatalogSeeder implements ApplicationRunner {
         User approvedSeller = getOrCreateApprovedSeller();
         Map<String, MarketplaceStore> stores = seedStores(approvedSeller);
         reassignLegacyShuffleHouseListings(stores.get("rare-finds"));
-        deactivateMarketplaceDuplicatesOfOfficial();
 
         for (SeedProduct seed : sampleProducts()) {
             MarketplaceStore store = MARKETPLACE.equals(seed.source()) ? stores.get(seed.storeSlug()) : null;
@@ -140,6 +144,18 @@ public class LocalCatalogSeeder implements ApplicationRunner {
         // by the image that matches its pro_name.
         updateProductImages();
         updateProductMetadata();
+        markPendingOrdersPaid();
+    }
+
+    /** Local checkout currently simulates payment completion for demo orders. */
+    private void markPendingOrdersPaid() {
+        List<Order> pendingOrders = orderRepository.findAll().stream()
+                .filter(order -> order.getPaymentStatus() == null || "PENDING".equalsIgnoreCase(order.getPaymentStatus()))
+                .toList();
+        pendingOrders.forEach(order -> order.setPaymentStatus("PAID"));
+        if (!pendingOrders.isEmpty()) {
+            orderRepository.saveAll(pendingOrders);
+        }
     }
 
     private void updateProductImages() {
@@ -280,8 +296,14 @@ public class LocalCatalogSeeder implements ApplicationRunner {
 
     private Map<String, CardGame> seedGames() {
         Map<String, CardGame> games = new HashMap<>();
-        games.put("Pokemon", getOrCreateGame("Pokemon", "Pokémon Trading Card Game"));
-        games.put("One Piece", getOrCreateGame("One Piece", "One Piece Card Game"));
+        CardGame pokemon = getOrCreateGame("Pokemon", "Pokémon Trading Card Game");
+        CardGame onePiece = getOrCreateGame("One Piece", "One Piece Card Game");
+        // Older local data exposed duplicate names in the selector. Move every
+        // listing to the canonical name before removing the unused game rows.
+        LegacyCardGameNormalizer.merge("Pokemon TCG", pokemon, cardGameRepository, productRepository);
+        LegacyCardGameNormalizer.merge("One Piece Card Game", onePiece, cardGameRepository, productRepository);
+        games.put("Pokemon", pokemon);
+        games.put("One Piece", onePiece);
         games.put("Magic: The Gathering", getOrCreateGame("Magic: The Gathering", "Magic: The Gathering"));
         games.put("Yu-Gi-Oh!", getOrCreateGame("Yu-Gi-Oh!", "Yu-Gi-Oh! Trading Card Game"));
         return games;
@@ -344,21 +366,6 @@ public class LocalCatalogSeeder implements ApplicationRunner {
                     && (product.getStore() == null || !rareFindsStore.getStoreId().equals(product.getStore().getStoreId()))) {
                 product.setStore(rareFindsStore);
                 productRepository.save(product);
-            }
-        }
-    }
-
-    /** Keep Marketplace demo stock distinct from Optracard Official Store stock. */
-    private void deactivateMarketplaceDuplicatesOfOfficial() {
-        List<Product> officialProducts = productRepository.findByListingSourceOrderByProIdDesc(OFFICIAL);
-        for (Product marketplaceProduct : productRepository.findByListingSourceOrderByProIdDesc(MARKETPLACE)) {
-            boolean duplicatesOfficial = officialProducts.stream().anyMatch(officialProduct ->
-                    Objects.equals(officialProduct.getProName(), marketplaceProduct.getProName())
-                            && Objects.equals(officialProduct.getProType(), marketplaceProduct.getProType())
-                            && Objects.equals(officialProduct.getGameId(), marketplaceProduct.getGameId()));
-            if (duplicatesOfficial && Boolean.TRUE.equals(marketplaceProduct.getIsActive())) {
-                marketplaceProduct.setIsActive(false);
-                productRepository.save(marketplaceProduct);
             }
         }
     }
@@ -461,7 +468,8 @@ public class LocalCatalogSeeder implements ApplicationRunner {
                 seed("Yu-Gi-Oh! 9-Pocket Collector Binder", "Accessories", "Yu-Gi-Oh!", 690, 850, 4, MARKETPLACE, "rare-finds"),
                 seed("MTG Commander Deck Case", "Accessories", "Magic: The Gathering", 380, 490, 11, MARKETPLACE, "rare-finds"),
 
-                // AAA-Trading: ten Marketplace-only listings. None is sold by the Official Store.
+                // AAA-Trading: Marketplace-only demo listings. Sellers create their own
+                // same-template offers through the Seller Workspace when needed.
                 seed("One Piece PRB-01 The Best Booster", "Booster", "One Piece", 128, 165, 18, MARKETPLACE, "aaa-trading"),
                 seed("Pokémon Shining Fates Elite Trainer Box", "Booster Box", "Pokemon", 1_850, 2_290, 3, MARKETPLACE, "aaa-trading"),
                 seed("One Piece OP-08 Two Legends Booster Box", "Booster Box", "One Piece", 2_650, 3_190, 4, MARKETPLACE, "aaa-trading"),

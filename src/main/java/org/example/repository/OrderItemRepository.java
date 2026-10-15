@@ -23,10 +23,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Integer> {
             JOIN products p ON p.pro_id = oi.pro_id
             LEFT JOIN cardgames cg ON cg.game_id = p.game_id
             WHERE o.ua_id = :userId
-              AND (o.ord_status IS NULL
-                   OR LOWER(TRIM(o.ord_status)) NOT IN ('canceled', 'cancelled'))
+              AND LOWER(TRIM(COALESCE(o.ord_status, ''))) IN ('delivered', 'completed')
             GROUP BY p.pro_id, p.pro_name, cg.game_name, p.pro_imageurl
             ORDER BY MAX(o.ord_createdate) DESC NULLS LAST, p.pro_id
             """, nativeQuery = true)
-    List<CollectionItemProjection> findPurchasedCardsByUserId(@Param("userId") Integer userId);
+    List<CollectionItemProjection> findDeliveredCardsByUserId(@Param("userId") Integer userId);
 }

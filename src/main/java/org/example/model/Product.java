@@ -62,7 +62,7 @@ public class Product{
     @JoinColumn(name = "store_id")
     private MarketplaceStore store;
 
-    /** Approved Marketplace listing used as the immutable product-information template. */
+    /** Public catalog listing used as the immutable product-information template. */
     @Column(name = "pro_template_id")
     private Integer templateProductId;
 }

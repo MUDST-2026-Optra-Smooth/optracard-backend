@@ -50,9 +50,15 @@ public class AdminDataController {
         return adminDataService.updateOfficialProduct(id, request);
     }
 
+    @PutMapping("/products/{id}/active")
+    public AdminData.ProductResponse updateOfficialProductActive(@PathVariable Integer id,
+                                                                  @RequestBody AdminData.ActiveRequest request) {
+        return adminDataService.updateOfficialProductActive(id, request == null ? null : request.active());
+    }
+
     @DeleteMapping("/products/{id}")
-    public ResponseEntity<Void> deactivateOfficialProduct(@PathVariable Integer id) {
-        adminDataService.deactivateOfficialProduct(id);
+    public ResponseEntity<Void> deleteOfficialProduct(@PathVariable Integer id) {
+        adminDataService.deleteOfficialProduct(id);
         return ResponseEntity.noContent().build();
     }
 
@@ -65,7 +71,8 @@ public class AdminDataController {
     @PutMapping("/orders/{id}/status")
     public AdminData.OrderResponse updateOrderStatus(@PathVariable Integer id,
                                                       @RequestBody AdminData.OrderStatusRequest request) {
-        return adminDataService.updateOrderStatus(id, request == null ? null : request.status());
+        return adminDataService.updateOrderStatus(id, request == null ? null : request.status(),
+                request == null ? null : request.trackingNumber());
     }
 
     @GetMapping("/stores")

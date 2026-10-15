@@ -179,11 +179,22 @@ class ProfileServiceTest {
         );
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
-        verify(orderItemRepository, never()).findPurchasedCardsByUserId(any());
+        verify(orderItemRepository, never()).findDeliveredCardsByUserId(any());
+    }
+
+    @Test
+    void getProfileShowsNoCollectionItemsWhenThereAreNoDeliveredOrders() {
+        when(userRepository.findByEmail("old@example.com")).thenReturn(Optional.of(user));
+        when(orderItemRepository.findDeliveredCardsByUserId(7)).thenReturn(List.of());
+
+        ProfileResponse response = profileService.getProfile("old@example.com");
+
+        assertEquals(List.of(), response.collection());
+        verify(orderItemRepository).findDeliveredCardsByUserId(7);
     }
 
     private void stubPurchasedCollection() {
-        when(orderItemRepository.findPurchasedCardsByUserId(7)).thenReturn(List.of(collectionItem));
+        when(orderItemRepository.findDeliveredCardsByUserId(7)).thenReturn(List.of(collectionItem));
         when(collectionItem.getProductId()).thenReturn(101);
         when(collectionItem.getName()).thenReturn("Charizard ex");
         when(collectionItem.getGame()).thenReturn("Pokemon");
