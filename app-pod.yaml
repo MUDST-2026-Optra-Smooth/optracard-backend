@@ -167,23 +167,23 @@ spec:
             httpGet:
               path: /v3/api-docs
               port: 8080
-            failureThreshold: 30
+            failureThreshold: 60
             periodSeconds: 10
-            timeoutSeconds: 5
+            timeoutSeconds: 10
           readinessProbe:
             httpGet:
               path: /v3/api-docs
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10
-            timeoutSeconds: 5
+            timeoutSeconds: 10
           livenessProbe:
             httpGet:
               path: /v3/api-docs
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 20
-            timeoutSeconds: 5
+            timeoutSeconds: 10
           resources:
             requests:
               cpu: 250m
