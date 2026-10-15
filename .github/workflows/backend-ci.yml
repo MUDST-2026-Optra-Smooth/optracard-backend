@@ -61,6 +61,9 @@ jobs:
     needs: build-and-test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Windows, X64]
+    defaults:
+      run:
+        shell: powershell
 
     steps:
       - name: Check out source
@@ -73,7 +76,6 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push backend image
-        shell: pwsh
         run: |
           docker build -t "${{ secrets.DOCKERHUB_USERNAME }}/optracard-backend:${{ github.sha }}" .
           if ($LASTEXITCODE -ne 0) { exit 1 }
@@ -83,21 +85,19 @@ jobs:
       - name: Configure Kubernetes access
         env:
           KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
-        shell: pwsh
         run: |
           if (-not $env:KUBECONFIG_BASE64) {
             Write-Host "::error::Missing GitHub Secret KUBECONFIG_BASE64. Add it in Settings > Secrets and variables > Actions."
             exit 1
           }
           New-Item -ItemType Directory -Force -Path "$HOME\.kube" | Out-Null
-          [IO.File]::WriteAllBytes("$HOME\.kube\config", [Convert]::FromBase64String($env:KUBECONFIG_BASE64))
+          [IO.File]::WriteAllBytes("$HOME\.kube\config", [Convert]::FromBase64String($env:KUBECONFIG_BASE64.Trim()))
 
       - name: Apply manifest and roll out backend
-        shell: pwsh
         run: |
           kubectl apply -f app-pod.yaml
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          kubectl set image deployment/optracard-backend-deployment optracard-backend-container=${{ secrets.DOCKERHUB_USERNAME }}/optracard-backend:${{ github.sha }} -n optracard-backend
+          kubectl set image deployment/optracard-backend-deployment optracard-backend-container="${{ secrets.DOCKERHUB_USERNAME }}/optracard-backend:${{ github.sha }}" -n optracard-backend
           if ($LASTEXITCODE -ne 0) { exit 1 }
           kubectl rollout status deployment/optracard-postgres -n optracard-backend --timeout=180s
           if ($LASTEXITCODE -ne 0) { exit 1 }
