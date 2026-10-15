@@ -358,3 +358,108 @@ When running in `local` profile, the following demo accounts are available:
 | `ops@optracard.com` | `password123` | `ADMIN` | Operations Administrator |
 | `seller.demo@optracard.local` | `SellerDemo!2026` | `SELLER` | Approved Merchant (`AAA-Trading`) |
 | `somchai@optracard.com` | `password123` | `USER` | Regular Customer Account |
+
+---
+
+## Containerization & Docker Deployment
+
+### Running with Docker Compose
+
+The repository includes a ready-to-run [docker-compose.yaml](file:///C:/Users/Acer/IdeaProjects/optracard-backend/docker-compose.yaml) that coordinates both PostgreSQL and the Spring Boot backend service:
+
+```bash
+# Start both PostgreSQL and OptraCard Backend
+docker-compose up -d --build
+
+# View real-time logs
+docker-compose logs -f backend
+
+# Stop the services
+docker-compose down
+```
+
+The services will be accessible at:
+- Backend API & Swagger: `http://localhost:8080/swagger-ui.html`
+- PostgreSQL: `localhost:5432` (database: `optracard`, user: `admin`, password: `password`)
+
+### Standalone Docker Image Build
+
+Build and run using the multi-stage [Dockerfile](file:///C:/Users/Acer/IdeaProjects/optracard-backend/Dockerfile):
+
+```bash
+# Build the container image
+docker build -t optracard-backend:latest .
+
+# Run the container (pointing to your PostgreSQL database)
+docker run -d -p 8080:8080 \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/optracard \
+  -e SPRING_DATASOURCE_USERNAME=admin \
+  -e SPRING_DATASOURCE_PASSWORD=password \
+  --name optracard-backend \
+  optracard-backend:latest
+```
+
+---
+
+## Kubernetes Deployment (`app-pod.yaml`)
+
+OptraCard includes Kubernetes orchestration manifests in [app-pod.yaml](file:///C:/Users/Acer/IdeaProjects/optracard-backend/app-pod.yaml):
+- **Namespace**: `optracard-backend`
+- **Deployment**: `optracard-backend-deployment` (2 replicas, CPU/Memory resource limits and requests, HTTP Liveness and Readiness probes on `/v3/api-docs`)
+- **Service**: `optracard-backend-service` (NodePort `30081`, forwarding port `8080` to containers)
+
+### Applying to Kubernetes Cluster
+
+```bash
+# 1. Apply the namespace, deployment, and service manifests
+kubectl apply -f app-pod.yaml
+
+# 2. Check rollout status
+kubectl rollout status deployment/optracard-backend-deployment -n optracard-backend
+
+# 3. View running pods and services
+kubectl get pods -n optracard-backend
+kubectl get svc -n optracard-backend
+
+# 4. Port-forward to local machine (if testing locally with Minikube / Kind / K3s)
+kubectl port-forward svc/optracard-backend-service 8080:8080 -n optracard-backend
+```
+
+---
+
+## Code Coverage & JaCoCo Reporting
+
+The project is configured with the **JaCoCo Maven Plugin** to track instruction and branch test coverage across all controllers, services, security filters, and utilities.
+
+### Generating Coverage Reports
+
+```bash
+# Run tests and generate the coverage report
+mvn clean verify
+```
+
+The generated HTML report is available at:
+```
+target/site/jacoco/index.html
+```
+Open `target/site/jacoco/index.html` in any web browser to inspect detailed line-by-line coverage metrics.
+
+---
+
+## Pipeline-as-Code (CI/CD Workflows)
+
+OptraCard enforces automated testing, security scanning, and code quality using GitHub Actions located in `.github/workflows/`:
+
+1. **Backend CI** ([`.github/workflows/backend-ci.yml`](file:///C:/Users/Acer/IdeaProjects/optracard-backend/.github/workflows/backend-ci.yml)):
+   - Triggers on every push to any branch and pull request.
+   - Sets up Temurin JDK 17 with Maven caching.
+   - Runs `mvn --batch-mode --no-transfer-progress clean verify` (compilation, full JUnit test suite, and JaCoCo coverage analysis).
+   - Automatically publishes JaCoCo coverage report artifacts.
+   - Validates multi-stage Docker container build (`docker build`).
+   - Validates Kubernetes manifest integrity (`kubectl apply --dry-run=client -f app-pod.yaml`).
+
+2. **CodeQL Backend Analysis** ([`.github/workflows/codeql.yml`](file:///C:/Users/Acer/IdeaProjects/optracard-backend/.github/workflows/codeql.yml)):
+   - Scans Java codebase for Common Weakness Enumerations (CWE), injection vulnerabilities, and security flaws.
+
+3. **Qodana Code Quality** ([`.github/workflows/qodana_code_quality.yml`](file:///C:/Users/Acer/IdeaProjects/optracard-backend/.github/workflows/qodana_code_quality.yml)):
+   - JetBrains static code analysis engine to ensure adherence to Java and Spring Boot design patterns.
