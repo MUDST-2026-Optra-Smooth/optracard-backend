@@ -31,7 +31,7 @@ The backend powers both the **Optracard Official Store** and a **Multi-Store Sel
   - [Prerequisites](#prerequisites)
   - [Database Setup](#database-setup)
   - [Running the Application](#running-the-application)
-  - [Running Tests](#running-tests)
+  - [Running Tests & Testing Architecture](#running-tests--testing-architecture)
 - [Default Demo Accounts](#default-demo-accounts)
 
 ---
@@ -339,11 +339,53 @@ The application will start on port `8080`.
 - Swagger UI Documentation: `http://localhost:8080/swagger-ui.html`
 - OpenAPI JSON Specification: `http://localhost:8080/v3/api-docs`
 
-### Running Tests
+### Running Tests & Testing Architecture
 
-Execute the complete test suite (Unit tests, Controller WebMvc tests, Security configuration tests, Service tests):
+OptraCard adopts a robust, multi-tiered testing strategy comprising **Unit Tests** and **End-to-End Integration Tests**, verified by automated JaCoCo code coverage.
+
+#### 1. Unit Tests (`src/test/java/org/example/...`)
+- **Controller WebMvc Tests** (`@WebMvcTest` + MockMvc):
+  - Validates HTTP request routing, input validation, serialization/deserialization, and HTTP response codes in isolation with mocked service dependencies.
+  - Controllers tested: `AdminController`, `AdminDataController`, `AuthController`, `CartController`, `OrderController`, `ProductController`, `ProfileController`, `SellerController`, `StoreApplicationController`, `SuperAdminController`.
+- **Service Layer Tests** (`@ExtendWith(MockitoExtension.class)`):
+  - Validates business logic, state transitions, security boundary checks, and repository interactions using Mockito.
+  - Services tested: `AuthService`, `ProductService`, `ProductDeletionService`, `CartService`, `OrderService`, `OrderNotificationService`, `ProfileService`, `SellerService`, `AdminDataService`, `MarketplaceStoreService`, `SuperAdminDataService`.
+- **Security & Utility Tests**:
+  - Validates `JwtTokenUtil` (token signing, claims parsing, expiration, role mapping) and `RateLimitFilter` (token-bucket rate limiting algorithms).
+
+#### 2. End-to-End Integration Tests (`src/test/java/org/example/integration/`)
+Integration tests run against a full Spring Boot application context (`@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)`), full Spring Security filter chains, and an in-memory **H2 Database** in PostgreSQL compatibility mode (`@ActiveProfiles("test")`). No external PostgreSQL installation is required.
+
+- **`AuthIntegrationTest`**:
+  - Full registration pipeline: persistence to database, BCrypt password hashing, and user role assignment.
+  - Login authentication: JWT bearer token issuance and signature validation.
+  - Negative cases: duplicate email rejection (`400 Bad Request`), invalid credentials rejection (`401 Unauthorized`).
+- **`ProductCatalogIntegrationTest`**:
+  - Public catalog browsing (`/api/products`), product details by ID, and keyword search.
+  - Role-based authorization enforcement: unauthenticated product creation rejected (`403 Forbidden`).
+  - Admin product creation: authenticated admin creates products and verifies database persistence.
+- **`UserProfileIntegrationTest`**:
+  - Protected endpoint security: unauthenticated profile access rejected (`403 Forbidden`).
+  - Profile retrieval for authenticated users with valid JWT tokens.
+  - Profile update persistence: user updates address and phone, verifying changes directly in the database.
+- **`CartIntegrationTest`**:
+  - Complete cart lifecycle: adding items, fetching user cart, updating quantities, removing items, and clearing carts.
+  - Cross-user security: prevents unauthorized access to another user's cart (`403 Forbidden`).
+
+#### Test Execution Commands
+
 ```bash
+# Run all tests (Unit + Integration tests)
 mvn test
+
+# Run only Unit Tests (excluding integration tests)
+mvn test -Dtest="!*IntegrationTest"
+
+# Run only Integration Tests
+mvn test -Dtest="*IntegrationTest"
+
+# Run a specific test class
+mvn test -Dtest=AuthIntegrationTest
 ```
 
 ---
