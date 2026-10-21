@@ -32,7 +32,7 @@ The backend powers both the **Optracard Official Store** and a **Multi-Store Sel
   - [Database Setup](#database-setup)
   - [Running the Application](#running-the-application)
   - [Running Tests & Testing Architecture](#running-tests--testing-architecture)
-- [Default Demo Accounts](#default-demo-accounts)
+- [Existing Local Accounts](#existing-local-accounts)
 
 ---
 
@@ -295,21 +295,19 @@ Restricted exclusively to `SUPER_ADMIN`.
 
 Configuration files are located in `src/main/resources/`:
 - `application.properties`: Shared configuration across all environments.
-- `application-local.properties`: Default settings for local development.
+- `application-local.properties`: Settings loaded when the `local` profile is explicitly selected.
 
-### Common Configuration Keys
+### Required local configuration
 
-| Key | Description | Default (Local) |
-|---|---|---|
-| `spring.profiles.active` | Active Spring profile | `local` |
-| `spring.datasource.url` | JDBC connection string | `jdbc:postgresql://localhost:5432/optracard` |
-| `spring.datasource.username` | Database username | `admin` |
-| `spring.datasource.password` | Database password | `password` |
-| `spring.jpa.hibernate.ddl-auto` | Hibernate DDL generation mode | `update` |
-| `jwt.secret` | Secret key for JWT signing / HMAC validation | `optracard-local-jwt-secret-change-this-value` |
-| `app.rate-limit.enabled` | Enable/disable RateLimitFilter | `false` (in local) |
-| `springdoc.swagger-ui.path` | Swagger UI web path | `/swagger-ui.html` |
-| `springdoc.api-docs.path` | OpenAPI JSON schema path | `/v3/api-docs` |
+Set these values in your shell or a local secret manager before running the
+application with the `local` profile. Do not commit them to the repository.
+
+| Variable | Purpose |
+|---|---|
+| `SPRING_DATASOURCE_URL` | JDBC connection string |
+| `SPRING_DATASOURCE_USERNAME` | Database username |
+| `SPRING_DATASOURCE_PASSWORD` | Database password |
+| `JWT_SECRET` | JWT signing key; use at least 32 random bytes |
 
 ---
 
@@ -326,7 +324,7 @@ Configuration files are located in `src/main/resources/`:
    CREATE DATABASE optracard;
    ```
 2. Run `database/init.sql` to initialize tables, constraints, and relational schemas.
-3. (Optional) Run `database/seed-seller-account.sql` if you want predefined test accounts.
+3. Existing database users keep their credentials. A new database has no pre-seeded accounts; register users through the application and bootstrap staff through a protected deployment procedure.
 
 ### Running the Application
 
@@ -390,16 +388,12 @@ mvn test -Dtest=AuthIntegrationTest
 
 ---
 
-## Default Demo Accounts
+## Existing Local Accounts
 
-When running in `local` profile, the following demo accounts are available:
-
-| Email | Password | Role | Description |
-|---|---|---|---|
-| `superadmin@optracard.com` | `password123` | `SUPER_ADMIN` | Platform Super Administrator |
-| `ops@optracard.com` | `password123` | `ADMIN` | Operations Administrator |
-| `seller.demo@optracard.local` | `SellerDemo!2026` | `SELLER` | Approved Merchant (`AAA-Trading`) |
-| `somchai@optracard.com` | `password123` | `USER` | Regular Customer Account |
+The repository does not create accounts or distribute default passwords. An
+existing local database retains its users and credentials. On an empty database,
+the local catalog seeds games and Official products only. Marketplace stores and
+products are created only when their seller already exists.
 
 ---
 
@@ -407,10 +401,10 @@ When running in `local` profile, the following demo accounts are available:
 
 ### Running with Docker Compose
 
-The repository includes a ready-to-run [`docker-compose.yaml`](./docker-compose.yaml) that coordinates both PostgreSQL and the Spring Boot backend service:
+The repository includes [`docker-compose.yaml`](./docker-compose.yaml) for PostgreSQL and the Spring Boot backend. Copy [`.env.example`](./.env.example) to a local `.env` file, then set `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `JWT_SECRET` before starting it:
 
 ```bash
-# Start both PostgreSQL and OptraCard Backend
+# Start both PostgreSQL and OptraCard Backend after setting the required variables
 docker-compose up -d --build
 
 # View real-time logs
@@ -422,7 +416,7 @@ docker-compose down
 
 The services will be accessible at:
 - Backend API & Swagger: `http://localhost:8080/swagger-ui.html`
-- PostgreSQL: `localhost:5432` (database: `optracard`, user: `admin`, password: `password`)
+- PostgreSQL: `localhost:5432` (database name defaults to `optracard`)
 
 ### Standalone Docker Image Build
 
@@ -432,11 +426,12 @@ Build and run using the multi-stage [`Dockerfile`](./Dockerfile):
 # Build the container image
 docker build -t optracard-backend:latest .
 
-# Run the container (pointing to your PostgreSQL database)
+# Run the container with values supplied from your shell or secret manager
 docker run -d -p 8080:8080 \
-  -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/optracard \
-  -e SPRING_DATASOURCE_USERNAME=admin \
-  -e SPRING_DATASOURCE_PASSWORD=password \
+  -e SPRING_DATASOURCE_URL \
+  -e SPRING_DATASOURCE_USERNAME \
+  -e SPRING_DATASOURCE_PASSWORD \
+  -e JWT_SECRET \
   --name optracard-backend \
   optracard-backend:latest
 ```
@@ -452,12 +447,19 @@ OptraCard includes Kubernetes orchestration manifests in [`app-pod.yaml`](./app-
 - **Backend**: `optracard-backend-deployment` (2 replicas, resource requests/limits, HTTP readiness and liveness probes on `/v3/api-docs`)
 - **Public API Service**: `optracard-backend-service` (NodePort `30081`, forwarding port `8080` to containers)
 
-The Secret contains demo-only values so that a fresh cluster is runnable. Change `POSTGRES_PASSWORD` and `JWT_SECRET` in `app-pod.yaml` before deploying to a shared cluster.
+The manifest references an existing `optracard-backend-secrets` Secret. Create it outside source control with `POSTGRES_USER`, `POSTGRES_PASSWORD`, and a unique `JWT_SECRET` before deployment:
+
+```bash
+kubectl create namespace optracard-backend
+kubectl -n optracard-backend create secret generic optracard-backend-secrets \
+  --from-env-file=/secure/path/optracard-backend.env
+```
 
 ### Applying to Kubernetes Cluster
 
 ```bash
-# 1. Apply PostgreSQL, configuration, backend deployment, and services
+# 1. Create the required Secret outside source control, then apply PostgreSQL,
+#    configuration, backend deployment, and services
 kubectl apply -f app-pod.yaml
 
 # 2. Check both rollouts
