@@ -107,7 +107,7 @@ public class LocalCatalogSeeder implements ApplicationRunner {
                 continue;
             }
             boolean alreadyExists = MARKETPLACE.equals(seed.source())
-                    ? store != null && productRepository.existsByProNameAndListingSourceAndStore_StoreId(
+                    ? productRepository.existsByProNameAndListingSourceAndStore_StoreId(
                     seed.name(), seed.source(), store.getStoreId())
                     : productRepository.existsByProNameAndListingSource(seed.name(), seed.source());
             if (alreadyExists) {
