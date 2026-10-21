@@ -4,7 +4,6 @@ import org.example.model.CardGame;
 import org.example.model.MarketplaceStore;
 import org.example.model.Order;
 import org.example.model.Product;
-import org.example.model.User;
 import org.example.repository.CardGameRepository;
 import org.example.repository.MarketplaceStoreRepository;
 import org.example.repository.OrderRepository;
@@ -13,7 +12,6 @@ import org.example.repository.UserRepository;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -81,39 +79,35 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     private final MarketplaceStoreRepository marketplaceStoreRepository;
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
 
     public LocalCatalogSeeder(
             ProductRepository productRepository,
             CardGameRepository cardGameRepository,
             MarketplaceStoreRepository marketplaceStoreRepository,
             OrderRepository orderRepository,
-            UserRepository userRepository,
-            PasswordEncoder passwordEncoder
+            UserRepository userRepository
     ) {
         this.productRepository = productRepository;
         this.cardGameRepository = cardGameRepository;
         this.marketplaceStoreRepository = marketplaceStoreRepository;
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
         Map<String, CardGame> games = seedGames();
-        // Shuffle House is retained as legacy local-demo data. Its owner has an
-        // approved store, so the account must remain a SELLER as well.
-        getOrCreateDemoSeller();
-        User approvedSeller = getOrCreateApprovedSeller();
-        Map<String, MarketplaceStore> stores = seedStores(approvedSeller);
+        Map<String, MarketplaceStore> stores = seedStores();
         reassignLegacyShuffleHouseListings(stores.get("rare-finds"));
 
         for (SeedProduct seed : sampleProducts()) {
             MarketplaceStore store = MARKETPLACE.equals(seed.source()) ? stores.get(seed.storeSlug()) : null;
+            if (MARKETPLACE.equals(seed.source()) && store == null) {
+                continue;
+            }
             boolean alreadyExists = MARKETPLACE.equals(seed.source())
-                    ? store != null && productRepository.existsByProNameAndListingSourceAndStore_StoreId(
+                    ? productRepository.existsByProNameAndListingSourceAndStore_StoreId(
                     seed.name(), seed.source(), store.getStoreId())
                     : productRepository.existsByProNameAndListingSource(seed.name(), seed.source());
             if (alreadyExists) {
@@ -318,39 +312,25 @@ public class LocalCatalogSeeder implements ApplicationRunner {
         });
     }
 
-    private User getOrCreateDemoSeller() {
-        return userRepository.findByEmail("marketplace.demo@optracard.local").map(user -> {
-            user.setUsername("marketplace_demo_seller");
-            user.setRole("SELLER");
-            user.setPhone("0800000000");
-            user.setAddress("Local catalog seed data");
-            return userRepository.save(user);
-        }).orElseGet(() -> {
-            User user = new User();
-            user.setUsername("marketplace_demo_seller");
-            user.setEmail("marketplace.demo@optracard.local");
-            user.setPassword(passwordEncoder.encode("local-demo-only"));
-            user.setRole("SELLER");
-            user.setPhone("0800000000");
-            user.setAddress("Local catalog seed data");
-            return userRepository.save(user);
-        });
+    private Map<String, MarketplaceStore> seedStores() {
+        Map<String, MarketplaceStore> stores = new HashMap<>();
+        addStoreForExistingSeller(stores, "seller.demo@optracard.local", "AAA-Trading", "aaa-trading", "Curated singles and sealed TCG products from AAA-Trading.");
+        addStoreForExistingSeller(stores, "cardcorner.demo@optracard.local", "Card Corner BKK", "card-corner-bkk", "Pokémon and One Piece singles.");
+        addStoreForExistingSeller(stores, "moonlight.demo@optracard.local", "Moonlight TCG", "moonlight-tcg", "Collector cards and sealed products.");
+        addStoreForExistingSeller(stores, "rarefinds.demo@optracard.local", "Rare Finds TCG", "rare-finds", "Curated cards for serious collectors.");
+        return stores;
     }
 
-    private Map<String, MarketplaceStore> seedStores(User approvedSeller) {
-        Map<String, MarketplaceStore> stores = new HashMap<>();
-        User cardCornerSeller = getOrCreateMarketplaceSeller(
-                "card_corner_seller", "cardcorner.demo@optracard.local", "CardCorner!2026", "0823456789");
-        User moonlightSeller = getOrCreateMarketplaceSeller(
-                "moonlight_tcg_seller", "moonlight.demo@optracard.local", "Moonlight!2026", "0834567890");
-        User rareFindsSeller = getOrCreateMarketplaceSeller(
-                "rare_finds_seller", "rarefinds.demo@optracard.local", "RareFinds!2026", "0845678901");
-
-        stores.put("aaa-trading", getOrCreateStore(approvedSeller.getUaId(), "AAA-Trading", "aaa-trading", "Curated singles and sealed TCG products from AAA-Trading."));
-        stores.put("card-corner-bkk", getOrCreateStore(cardCornerSeller.getUaId(), "Card Corner BKK", "card-corner-bkk", "Pokémon and One Piece singles."));
-        stores.put("moonlight-tcg", getOrCreateStore(moonlightSeller.getUaId(), "Moonlight TCG", "moonlight-tcg", "Collector cards and sealed products."));
-        stores.put("rare-finds", getOrCreateStore(rareFindsSeller.getUaId(), "Rare Finds TCG", "rare-finds", "Curated cards for serious collectors."));
-        return stores;
+    private void addStoreForExistingSeller(
+            Map<String, MarketplaceStore> stores,
+            String email,
+            String name,
+            String slug,
+            String description
+    ) {
+        userRepository.findByEmail(email)
+                .filter(user -> "SELLER".equalsIgnoreCase(user.getRole()))
+                .ifPresent(user -> stores.put(slug, getOrCreateStore(user.getUaId(), name, slug, description)));
     }
 
     private void reassignLegacyShuffleHouseListings(MarketplaceStore rareFindsStore) {
@@ -368,46 +348,6 @@ public class LocalCatalogSeeder implements ApplicationRunner {
                 productRepository.save(product);
             }
         }
-    }
-
-    private User getOrCreateApprovedSeller() {
-        return userRepository.findByEmail("seller.demo@optracard.local").map(user -> {
-            user.setUsername("aaa_trading_seller");
-            user.setPassword(passwordEncoder.encode("SellerDemo!2026"));
-            user.setRole("SELLER");
-            user.setPhone("0812345678");
-            user.setAddress("Bangkok, Thailand");
-            return userRepository.save(user);
-        }).orElseGet(() -> {
-            User user = new User();
-            user.setUsername("aaa_trading_seller");
-            user.setEmail("seller.demo@optracard.local");
-            user.setPassword(passwordEncoder.encode("SellerDemo!2026"));
-            user.setRole("SELLER");
-            user.setPhone("0812345678");
-            user.setAddress("Bangkok, Thailand");
-            return userRepository.save(user);
-        });
-    }
-
-    private User getOrCreateMarketplaceSeller(String username, String email, String password, String phone) {
-        return userRepository.findByEmail(email).map(user -> {
-            user.setUsername(username);
-            user.setPassword(passwordEncoder.encode(password));
-            user.setRole("SELLER");
-            user.setPhone(phone);
-            user.setAddress("Bangkok, Thailand");
-            return userRepository.save(user);
-        }).orElseGet(() -> {
-            User user = new User();
-            user.setUsername(username);
-            user.setEmail(email);
-            user.setPassword(passwordEncoder.encode(password));
-            user.setRole("SELLER");
-            user.setPhone(phone);
-            user.setAddress("Bangkok, Thailand");
-            return userRepository.save(user);
-        });
     }
 
     private MarketplaceStore getOrCreateStore(Integer sellerUserId, String name, String slug, String description) {
