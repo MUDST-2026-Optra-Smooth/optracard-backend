@@ -12,6 +12,7 @@ import org.example.repository.ProductRepository;
 import org.example.repository.UserRepository;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -82,6 +83,7 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final String catalogPassword;
 
     public LocalCatalogSeeder(
             ProductRepository productRepository,
@@ -89,7 +91,8 @@ public class LocalCatalogSeeder implements ApplicationRunner {
             MarketplaceStoreRepository marketplaceStoreRepository,
             OrderRepository orderRepository,
             UserRepository userRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            @Value("${optracard.local-catalog-password}") String catalogPassword
     ) {
         this.productRepository = productRepository;
         this.cardGameRepository = cardGameRepository;
@@ -97,6 +100,7 @@ public class LocalCatalogSeeder implements ApplicationRunner {
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.catalogPassword = catalogPassword;
     }
 
     @Override
@@ -329,7 +333,7 @@ public class LocalCatalogSeeder implements ApplicationRunner {
             User user = new User();
             user.setUsername("marketplace_demo_seller");
             user.setEmail("marketplace.demo@optracard.local");
-            user.setPassword(passwordEncoder.encode("local-demo-only"));
+            user.setPassword(passwordEncoder.encode(catalogPassword));
             user.setRole("SELLER");
             user.setPhone("0800000000");
             user.setAddress("Local catalog seed data");
@@ -340,11 +344,11 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     private Map<String, MarketplaceStore> seedStores(User approvedSeller) {
         Map<String, MarketplaceStore> stores = new HashMap<>();
         User cardCornerSeller = getOrCreateMarketplaceSeller(
-                "card_corner_seller", "cardcorner.demo@optracard.local", "CardCorner!2026", "0823456789");
+                "card_corner_seller", "cardcorner.demo@optracard.local", "0823456789");
         User moonlightSeller = getOrCreateMarketplaceSeller(
-                "moonlight_tcg_seller", "moonlight.demo@optracard.local", "Moonlight!2026", "0834567890");
+                "moonlight_tcg_seller", "moonlight.demo@optracard.local", "0834567890");
         User rareFindsSeller = getOrCreateMarketplaceSeller(
-                "rare_finds_seller", "rarefinds.demo@optracard.local", "RareFinds!2026", "0845678901");
+                "rare_finds_seller", "rarefinds.demo@optracard.local", "0845678901");
 
         stores.put("aaa-trading", getOrCreateStore(approvedSeller.getUaId(), "AAA-Trading", "aaa-trading", "Curated singles and sealed TCG products from AAA-Trading."));
         stores.put("card-corner-bkk", getOrCreateStore(cardCornerSeller.getUaId(), "Card Corner BKK", "card-corner-bkk", "Pokémon and One Piece singles."));
@@ -373,7 +377,7 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     private User getOrCreateApprovedSeller() {
         return userRepository.findByEmail("seller.demo@optracard.local").map(user -> {
             user.setUsername("aaa_trading_seller");
-            user.setPassword(passwordEncoder.encode("SellerDemo!2026"));
+            user.setPassword(passwordEncoder.encode(catalogPassword));
             user.setRole("SELLER");
             user.setPhone("0812345678");
             user.setAddress("Bangkok, Thailand");
@@ -382,7 +386,7 @@ public class LocalCatalogSeeder implements ApplicationRunner {
             User user = new User();
             user.setUsername("aaa_trading_seller");
             user.setEmail("seller.demo@optracard.local");
-            user.setPassword(passwordEncoder.encode("SellerDemo!2026"));
+            user.setPassword(passwordEncoder.encode(catalogPassword));
             user.setRole("SELLER");
             user.setPhone("0812345678");
             user.setAddress("Bangkok, Thailand");
@@ -390,10 +394,10 @@ public class LocalCatalogSeeder implements ApplicationRunner {
         });
     }
 
-    private User getOrCreateMarketplaceSeller(String username, String email, String password, String phone) {
+    private User getOrCreateMarketplaceSeller(String username, String email, String phone) {
         return userRepository.findByEmail(email).map(user -> {
             user.setUsername(username);
-            user.setPassword(passwordEncoder.encode(password));
+            user.setPassword(passwordEncoder.encode(catalogPassword));
             user.setRole("SELLER");
             user.setPhone(phone);
             user.setAddress("Bangkok, Thailand");
@@ -402,7 +406,7 @@ public class LocalCatalogSeeder implements ApplicationRunner {
             User user = new User();
             user.setUsername(username);
             user.setEmail(email);
-            user.setPassword(passwordEncoder.encode(password));
+            user.setPassword(passwordEncoder.encode(catalogPassword));
             user.setRole("SELLER");
             user.setPhone(phone);
             user.setAddress("Bangkok, Thailand");

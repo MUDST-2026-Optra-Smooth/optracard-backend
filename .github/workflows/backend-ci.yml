@@ -54,7 +54,14 @@ jobs:
       - name: Validate Kubernetes Manifests
         run: |
           pip install pyyaml
-          python -c "import yaml; docs = list(yaml.safe_load_all(open('app-pod.yaml'))); kinds = {doc['kind'] for doc in docs if doc}; required = {'Namespace', 'ConfigMap', 'Secret', 'PersistentVolumeClaim', 'Deployment', 'Service'}; assert required <= kinds, f'Missing: {required-kinds}'; print(f'Validated {len(docs)} Kubernetes manifests successfully')"
+          python -c "import yaml; docs = list(yaml.safe_load_all(open('app-pod.yaml'))); kinds = {doc['kind'] for doc in docs if doc}; required = {'Namespace', 'ConfigMap', 'PersistentVolumeClaim', 'Deployment', 'Service'}; assert required <= kinds, f'Missing: {required-kinds}'; assert 'Secret' not in kinds, 'Credentials must be supplied as an external Kubernetes Secret'; print(f'Validated {len(docs)} Kubernetes manifests successfully')"
+
+      - name: Validate Docker Compose configuration
+        env:
+          POSTGRES_USER: ci-user
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+          JWT_SECRET: ${{ github.sha }}
+        run: docker compose -f docker-compose.yaml config --quiet
 
   deploy:
     name: Build, Push & Deploy Backend

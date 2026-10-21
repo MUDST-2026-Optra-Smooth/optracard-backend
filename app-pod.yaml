@@ -11,21 +11,11 @@ metadata:
   namespace: optracard-backend
 data:
   POSTGRES_DB: optracard
-  SPRING_PROFILES_ACTIVE: local
+  SPRING_PROFILES_ACTIVE: production
   SPRING_JPA_HIBERNATE_DDL_AUTO: update
----
-# Demo-only values so the manifest can run as supplied. Replace these values
-# before using a shared or production cluster.
-apiVersion: v1
-kind: Secret
-metadata:
-  name: optracard-backend-secrets
-  namespace: optracard-backend
-type: Opaque
-stringData:
-  POSTGRES_USER: admin
-  POSTGRES_PASSWORD: password
-  JWT_SECRET: change-this-demo-jwt-secret-before-production
+# Credentials are deliberately not stored in source control. Ensure the
+# `optracard-backend-secrets` Secret exists before these Deployments start, with
+# POSTGRES_USER, POSTGRES_PASSWORD, and JWT_SECRET.
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
