@@ -165,6 +165,42 @@ class AdminDataServiceTest {
     }
 
     @Test
+    void getOrders_filtersBySourceAndTreatsMissingSourceAsOfficial() {
+        Order official = new Order();
+        official.setOrderId(1);
+        official.setItems(List.of());
+
+        Order marketplace = new Order();
+        marketplace.setOrderId(2);
+        marketplace.setSource("MARKETPLACE");
+        marketplace.setItems(List.of());
+
+        when(orderRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(official, marketplace));
+        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of());
+        when(userRepository.findAll()).thenReturn(List.of());
+
+        assertEquals(List.of(1), adminDataService.getOrders("OFFICIAL").stream()
+                .map(AdminData.OrderResponse::id).toList());
+        assertEquals(List.of(2), adminDataService.getOrders("MARKETPLACE").stream()
+                .map(AdminData.OrderResponse::id).toList());
+        assertEquals(2, adminDataService.getOrders("ALL").size());
+    }
+
+    @Test
+    void marketplaceOrders_areReadOnlyForAdministrators() {
+        Order order = new Order();
+        order.setOrderId(44);
+        order.setSource("MARKETPLACE");
+        when(orderRepository.findById(44)).thenReturn(Optional.of(order));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> adminDataService.updateOrderStatus(44, "SHIPPED", "TH123456789"));
+
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        verify(orderRepository, never()).saveAndFlush(any(Order.class));
+    }
+
+    @Test
     void deleteOfficialProduct_delegatesPermanentRemovalToTheDeletionService() {
         Product product = new Product();
         product.setProId(12);

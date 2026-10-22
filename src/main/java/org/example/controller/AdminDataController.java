@@ -63,7 +63,9 @@ public class AdminDataController {
     }
 
     @GetMapping("/orders")
-    public List<AdminData.OrderResponse> orders() { return adminDataService.getOrders(); }
+    public List<AdminData.OrderResponse> orders(@RequestParam(defaultValue = "OFFICIAL") String source) {
+        return adminDataService.getOrders(source);
+    }
 
     @GetMapping("/orders/{id}")
     public AdminData.OrderResponse order(@PathVariable Integer id) { return adminDataService.getOrder(id); }
