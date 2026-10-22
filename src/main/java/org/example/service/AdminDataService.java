@@ -171,10 +171,12 @@ public class AdminDataService {
     }
 
     @Transactional(readOnly = true)
-    public List<AdminData.OrderResponse> getOrders() {
+    public List<AdminData.OrderResponse> getOrders(String source) {
+        String requestedSource = normalizeOrderSource(source);
         Map<Integer, Product> products = productMap();
         Map<Integer, User> users = userMap();
         return orderRepository.findAllByOrderByCreatedAtDesc().stream()
+                .filter(order -> "ALL".equals(requestedSource) || requestedSource.equals(orderSource(order)))
                 .map(order -> toOrderResponse(order, products, users)).toList();
     }
 
@@ -193,6 +195,10 @@ public class AdminDataService {
         }
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
+        if ("MARKETPLACE".equals(orderSource(order))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Marketplace orders are fulfilled by the seller and are read-only for administrators");
+        }
         boolean shippingNow = "SHIPPED".equals(normalized) && !"SHIPPED".equalsIgnoreCase(order.getStatus());
         if (shippingNow) {
             order.setTrackingNumber(requireTrackingNumber(trackingNumber));
@@ -298,7 +304,7 @@ public class AdminDataService {
         User user = users.get(order.getUserId());
         return new AdminData.OrderResponse(order.getOrderId(), orderNumber(order), order.getUserId(),
                 user == null ? "Unknown customer" : user.getUsername(), order.getCreatedAt(), order.getTotalPrice(),
-                order.getSource(), order.getStoreId(), order.getStoreName(), displayStatus(order.getStatus()),
+                orderSource(order), order.getStoreId(), order.getStoreName(), displayStatus(order.getStatus()),
                 order.getPaymentStatus(), order.getPaymentMethod(), order.getShippingMethod(), order.getShippingAddress(), order.getRecipientName(),
                 order.getRecipientPhone(), order.getTrackingNumber(), items);
     }
@@ -318,6 +324,18 @@ public class AdminDataService {
 
     private boolean isOfficial(Product product) {
         return !"MARKETPLACE".equalsIgnoreCase(product.getListingSource());
+    }
+
+    private String normalizeOrderSource(String source) {
+        String normalized = source == null || source.isBlank() ? "OFFICIAL" : source.trim().toUpperCase(Locale.ROOT);
+        if (!List.of("OFFICIAL", "MARKETPLACE", "ALL").contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid order source");
+        }
+        return normalized;
+    }
+
+    private String orderSource(Order order) {
+        return "MARKETPLACE".equalsIgnoreCase(order.getSource()) ? "MARKETPLACE" : "OFFICIAL";
     }
 
     private String orderNumber(Order order) {
