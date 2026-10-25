@@ -6,11 +6,13 @@ import org.example.model.MarketplaceStore;
 import org.example.model.Order;
 import org.example.model.OrderItem;
 import org.example.model.Product;
+import org.example.model.StockAlertSettings;
 import org.example.model.User;
 import org.example.repository.CardGameRepository;
 import org.example.repository.MarketplaceStoreRepository;
 import org.example.repository.OrderRepository;
 import org.example.repository.ProductRepository;
+import org.example.repository.StockAlertSettingsRepository;
 import org.example.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,7 @@ public class AdminDataService {
     private final UserRepository userRepository;
     private final OrderNotificationService notificationService;
     private final ProductDeletionService productDeletionService;
+    private final StockAlertSettingsRepository stockAlertSettingsRepository;
 
     public AdminDataService(ProductRepository productRepository,
                             OrderRepository orderRepository,
@@ -44,7 +47,8 @@ public class AdminDataService {
                             CardGameRepository cardGameRepository,
                             UserRepository userRepository,
                              OrderNotificationService notificationService,
-                             ProductDeletionService productDeletionService) {
+                             ProductDeletionService productDeletionService,
+                             StockAlertSettingsRepository stockAlertSettingsRepository) {
         this.productRepository = productRepository;
         this.orderRepository = orderRepository;
         this.storeRepository = storeRepository;
@@ -52,6 +56,7 @@ public class AdminDataService {
         this.userRepository = userRepository;
         this.notificationService = notificationService;
         this.productDeletionService = productDeletionService;
+        this.stockAlertSettingsRepository = stockAlertSettingsRepository;
     }
 
     @Transactional(readOnly = true)
@@ -104,9 +109,14 @@ public class AdminDataService {
         int pendingMarketplaceRequests = (int) products.stream()
                 .filter(product -> "MARKETPLACE".equalsIgnoreCase(product.getListingSource()))
                 .filter(product -> "PENDING".equalsIgnoreCase(product.getApprovalStatus())).count();
+        int stockAlertThreshold = stockAlertSettingsRepository.findById(StockAlertSettings.SETTINGS_ID)
+                .map(StockAlertSettings::getDefaultThreshold)
+                .filter(value -> value != null && value >= 1)
+                .orElse(StockAlertSettings.DEFAULT_THRESHOLD);
         int lowStockProducts = (int) products.stream().filter(this::isOfficial)
                 .filter(product -> Boolean.TRUE.equals(product.getIsActive()))
-                .filter(product -> integer(product.getProQuantity()) <= 5).count();
+                .filter(product -> integer(product.getProQuantity()) > 0
+                        && integer(product.getProQuantity()) <= stockAlertThreshold).count();
 
         return new AdminData.DashboardResponse(revenue, expenses, revenue - expenses, orders.size(), totalItems,
                 orders.isEmpty() ? 0d : revenue / orders.size(), activeOfficialProducts, activeMarketplaceProducts,
