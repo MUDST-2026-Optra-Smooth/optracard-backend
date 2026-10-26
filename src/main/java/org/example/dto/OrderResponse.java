@@ -20,5 +20,13 @@ public record OrderResponse(
         String shippingAddress,
         String recipientName,
         String recipientPhone,
-        List<OrderItemResponse> items
+        List<OrderItemResponse> items,
+        /** Items only, before discount and shipping. */
+        Double subtotal,
+        /** Promotion code applied at checkout, or null when none was used. */
+        String discountCode,
+        /** Promotion name as it was at checkout, or null when none was used. */
+        String discountName,
+        /** Amount taken off the items, 0 when no promotion was used. */
+        Double discountAmount
 ) {}

@@ -77,6 +77,23 @@ class OrderServiceTest {
     }
 
     @Test
+    void orderHistoryReportsSubtotalAndNoDiscountForOrdersWithoutAPromotion() {
+        orderService.placeOrder(7, new CreateOrderRequest("Kendo", "0812345678", "Bangkok", "standard", "cash"));
+        Order officialOrder = savedOrders.stream()
+                .filter(order -> "OFFICIAL".equals(order.getSource()))
+                .findFirst().orElseThrow();
+        when(orderRepository.findByUserIdOrderByCreatedAtDesc(7)).thenReturn(List.of(officialOrder));
+
+        org.example.dto.OrderResponse response = orderService.getOrderHistory(7).get(0);
+
+        assertEquals(100d, response.subtotal());
+        assertEquals(50d, response.shippingFee());
+        assertEquals(150d, response.total());
+        assertEquals(0d, response.discountAmount());
+        assertEquals(null, response.discountCode());
+    }
+
+    @Test
     void mixedOfficialAndMarketplaceCartCreatesOneOrderForEachSeller() {
         CheckoutResponse result = orderService.placeOrder(7,
                 new CreateOrderRequest("Kendo", "0812345678", "Bangkok", "standard", "cash"));

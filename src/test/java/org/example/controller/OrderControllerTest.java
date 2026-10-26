@@ -51,7 +51,8 @@ class OrderControllerTest {
         mockOrder = new OrderResponse(
                 1, "ORD-001", null, null, "OFFICIAL", LocalDateTime.now(),
                 100.0, "COD", "PENDING", "PENDING", "Standard", 50.0,
-                null, "Address", "John", "0812345678", List.of()
+                null, "Address", "John", "0812345678", List.of(),
+                50.0, null, null, 0.0
         );
     }
 

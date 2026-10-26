@@ -306,7 +306,10 @@ public class AdminDataService {
                 user == null ? "Unknown customer" : user.getUsername(), order.getCreatedAt(), order.getTotalPrice(),
                 orderSource(order), order.getStoreId(), order.getStoreName(), displayStatus(order.getStatus()),
                 order.getPaymentStatus(), order.getPaymentMethod(), order.getShippingMethod(), order.getShippingAddress(), order.getRecipientName(),
-                order.getRecipientPhone(), order.getTrackingNumber(), items);
+                order.getRecipientPhone(), order.getTrackingNumber(), items,
+                order.getShippingFee() == null ? 0d : order.getShippingFee(),
+                items.stream().mapToDouble(item -> (item.price() == null ? 0d : item.price()) * (item.quantity() == null ? 0 : item.quantity())).sum(),
+                null, null, 0d);
     }
 
     private AdminData.StoreResponse toStoreResponse(MarketplaceStore store, int productCount) {

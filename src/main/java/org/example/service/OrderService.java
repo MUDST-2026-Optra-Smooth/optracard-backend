@@ -169,7 +169,16 @@ public class OrderService {
                 order.getCreatedAt(), order.getTotalPrice(), order.getPaymentMethod(), order.getPaymentStatus(),
                 displayStatus(order.getStatus()), order.getShippingMethod(), order.getShippingFee(),
                 order.getTrackingNumber(),
-                order.getShippingAddress(), order.getRecipientName(), order.getRecipientPhone(), items);
+                order.getShippingAddress(), order.getRecipientName(), order.getRecipientPhone(), items,
+                // Discount fields are filled in by the promotion feature; until an order stores
+                // them the subtotal is derived from the line items and no discount is reported.
+                itemsSubtotal(items), null, null, 0d);
+    }
+
+    private double itemsSubtotal(List<OrderItemResponse> items) {
+        return items.stream()
+                .mapToDouble(item -> (item.price() == null ? 0d : item.price()) * (item.quantity() == null ? 0 : item.quantity()))
+                .sum();
     }
 
     private void validateRequest(CreateOrderRequest request, String shipping, String payment) {

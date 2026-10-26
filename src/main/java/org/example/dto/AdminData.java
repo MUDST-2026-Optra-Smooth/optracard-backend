@@ -30,7 +30,9 @@ public final class AdminData {
             Integer id, String orderNumber, Integer buyerId, String buyerName, LocalDateTime createdAt,
             Double total, String source, Integer storeId, String storeName, String status, String paymentStatus,
             String paymentMethod, String shippingMethod, String shippingAddress, String recipientName, String recipientPhone,
-            String trackingNumber, List<OrderItemResponse> items
+            String trackingNumber, List<OrderItemResponse> items,
+            // Same fields as the buyer order response. The discount fields are filled in by the promotion feature.
+            Double shippingFee, Double subtotal, String discountCode, String discountName, Double discountAmount
     ) {}
 
     public record OrderStatusRequest(String status, String trackingNumber) {}
