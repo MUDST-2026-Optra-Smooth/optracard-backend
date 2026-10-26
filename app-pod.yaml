@@ -11,7 +11,11 @@ metadata:
   namespace: optracard-backend
 data:
   POSTGRES_DB: optracard
-  SPRING_PROFILES_ACTIVE: production
+  # This manifest targets the local Kubernetes cluster. The local profile
+  # creates the Official catalog for an empty database and never creates or
+  # overwrites user accounts. Existing seller accounts can receive their
+  # matching demo Marketplace listings.
+  SPRING_PROFILES_ACTIVE: local
   SPRING_JPA_HIBERNATE_DDL_AUTO: update
 # Credentials are deliberately not stored in source control. Ensure the
 # `optracard-backend-secrets` Secret exists before these Deployments start, with

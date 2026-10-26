@@ -443,7 +443,7 @@ docker run -d -p 8080:8080 \
 OptraCard includes Kubernetes orchestration manifests in [`app-pod.yaml`](./app-pod.yaml):
 - **Namespace**: `optracard-backend`
 - **PostgreSQL**: a single-replica Deployment with a `1Gi` PersistentVolumeClaim and an internal ClusterIP Service
-- **Configuration**: ConfigMap for non-sensitive values and Secret for database credentials and JWT signing key
+- **Configuration**: ConfigMap for non-sensitive values and Secret for database credentials and JWT signing key. The local Kubernetes manifest uses the `local` profile so an empty database receives the Official catalog and never creates or overwrites accounts. Existing seller accounts can receive their matching demo Marketplace listings.
 - **Backend**: `optracard-backend-deployment` (2 replicas, resource requests/limits, HTTP readiness and liveness probes on `/v3/api-docs`)
 - **Public API Service**: `optracard-backend-service` (NodePort `30081`, forwarding port `8080` to containers)
 

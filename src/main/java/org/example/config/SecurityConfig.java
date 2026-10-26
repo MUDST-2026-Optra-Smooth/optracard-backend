@@ -48,12 +48,17 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of(
-                "http://localhost",
-                "http://localhost:*",
-                "http://127.0.0.1",
-                "http://127.0.0.1:*"
-        )); // React Vite dev / test / preview ports and local docker container
+        // Keep this list explicit. Spring does not treat a port wildcard written
+        // as ":*" consistently, which caused requests from the Kubernetes
+        // frontend port-forward (127.0.0.1:30080) to fail with "Invalid CORS request".
+        config.setAllowedOrigins(List.of(
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://localhost:4173",
+                "http://127.0.0.1:4173",
+                "http://localhost:30080",
+                "http://127.0.0.1:30080"
+        )); // Vite dev/preview and local Kubernetes frontend port-forward
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Authorization", "Content-Type", "Retry-After", "X-XSRF-TOKEN"));
