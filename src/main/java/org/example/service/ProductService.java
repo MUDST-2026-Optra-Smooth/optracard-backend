@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Comparator;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -93,11 +94,26 @@ public class ProductService {
             return getAllProducts();
         }
 
-        return productRepository.searchByKeyword(normalizedKeyword)
+        return productRepository.findByIsActiveTrueOrderByProTypeAscProIdAsc()
                 .stream()
                 .filter(this::isPublicCatalogProduct)
-                .map(this::toCatalogResponse)
+                .map(product -> new ScoredProduct(product, searchScore(normalizedKeyword, product)))
+                .filter(result -> result.score() != CatalogSearchMatcher.NO_MATCH)
+                .sorted(Comparator.comparingInt(ScoredProduct::score)
+                        .thenComparing(result -> result.product().getProId(), Comparator.reverseOrder()))
+                .map(result -> toCatalogResponse(result.product()))
                 .toList();
+    }
+
+    private record ScoredProduct(Product product, int score) {}
+
+    private int searchScore(String query, Product product) {
+        String game = product.getCardGame() == null ? "Uncategorized" : product.getCardGame().getGameName();
+        String store = "MARKETPLACE".equalsIgnoreCase(product.getListingSource())
+                ? (product.getStore() == null ? "Marketplace seller" : product.getStore().getStoreName())
+                : "Optracard Official Store";
+        return CatalogSearchMatcher.score(query, product.getProName(), game, product.getProType(),
+                product.getProDescription(), store);
     }
 
     public Product createProduct(Product product) {

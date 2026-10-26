@@ -113,6 +113,36 @@ class ProductCatalogIntegrationTest {
     }
 
     @Test
+    void searchProducts_supportsTyposSynonymsAndPublicVisibility() throws Exception {
+        Product hidden = new Product();
+        hidden.setGameId(pokemonGame.getGameId());
+        hidden.setProName("Hidden Pokemon");
+        hidden.setIsActive(true);
+        hidden.setListingSource("MARKETPLACE");
+        hidden.setApprovalStatus("PENDING");
+        productRepository.save(hidden);
+
+        for (String query : new String[]{"pokamon", "โปเกมอน", "โปเกมอน charizard"}) {
+            mockMvc.perform(get("/api/products/search").param("q", query))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$", hasSize(1)))
+                    .andExpect(jsonPath("$[0].name").value("Charizard VMAX"));
+        }
+        CardGame onePiece = new CardGame();
+        onePiece.setGameName("One Piece");
+        onePiece = cardGameRepository.save(onePiece);
+        Product luffy = new Product();
+        luffy.setGameId(onePiece.getGameId());
+        luffy.setProName("Luffy");
+        luffy.setIsActive(true);
+        productRepository.save(luffy);
+        mockMvc.perform(get("/api/products/search").param("q", "วันพีซ"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].name").value("Luffy"));
+    }
+
+    @Test
     @DisplayName("Unauthenticated request to create product is rejected with 403 Forbidden")
     void createProduct_unauthenticated_returnsForbiddenOrUnauthorized() throws Exception {
         Product newProduct = new Product();

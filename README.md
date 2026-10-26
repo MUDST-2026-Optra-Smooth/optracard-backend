@@ -166,8 +166,10 @@ Public catalog browsing is open; product creation requires `ADMIN` or `SUPER_ADM
 | `GET` | `/api/products` or `/api/products/home` | Public | Returns curated catalog products for the storefront home page |
 | `GET` | `/api/products/{id}` | Public | Returns detailed product information by ID |
 | `GET` | `/api/products/{id}/offers` | Public | Returns alternative merchant marketplace offers for the same card |
-| `GET` | `/api/products/search?q={keyword}` | Public | Performs case-insensitive search across product name, game, and type |
+| `GET` | `/api/products/search?q={keyword}` | Public | Searches public products by relevance; supports typos in product/game names and Thai game synonyms |
 | `POST` | `/api/products` | `ADMIN`, `SUPER_ADMIN` | Creates a new official store product listing |
+
+Search ignores case and Latin accents, supports `โปเกมอน` (Pokemon) and `วันพีซ` (One Piece), and allows one typo in words of 4–7 characters or two in longer words. Other searchable fields (type, description, and store) match exactly. Public visibility rules apply before ranking. Search scans active catalog products in application memory; consider indexed search if the catalog grows substantially.
 
 ---
 
