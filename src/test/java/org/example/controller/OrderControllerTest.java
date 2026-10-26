@@ -3,9 +3,11 @@ package org.example.controller;
 import org.example.dto.CheckoutResponse;
 import org.example.dto.CreateOrderRequest;
 import org.example.dto.OrderResponse;
+import org.example.dto.ReorderResponse;
 import org.example.model.User;
 import org.example.repository.UserRepository;
 import org.example.service.OrderService;
+import org.example.service.ReorderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,6 +34,9 @@ class OrderControllerTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private ReorderService reorderService;
 
     @Mock
     private Authentication authentication;
@@ -97,6 +102,21 @@ class OrderControllerTest {
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals(1, response.getBody().orderCount());
         assertEquals(150.0, response.getBody().total());
+    }
+
+    @Test
+    @DisplayName("reorder() reorders for the authenticated user and returns the result")
+    void reorder_returnsReorderResponse() {
+        when(authentication.getName()).thenReturn("user@example.com");
+        when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(testUser));
+        ReorderResponse result = new ReorderResponse("ORD-001", 1, 0, List.of(), List.of());
+        when(reorderService.reorder(10, "ORD-001")).thenReturn(result);
+
+        ResponseEntity<ReorderResponse> response = orderController.reorder(authentication, "ORD-001");
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals("ORD-001", response.getBody().orderNumber());
+        verify(reorderService).reorder(10, "ORD-001");
     }
 
     @Test

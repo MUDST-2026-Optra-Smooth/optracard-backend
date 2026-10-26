@@ -142,7 +142,7 @@ public class CartService {
         return new CartResponse(cart.getCartId(), items, subtotal, count);
     }
 
-    private boolean isPurchasable(Product product) {
+    public boolean isPurchasable(Product product) {
         return Boolean.TRUE.equals(product.getIsActive())
                 && (
                 !"MARKETPLACE".equalsIgnoreCase(product.getListingSource())

@@ -195,7 +195,7 @@ public class OrderService {
         }
     }
 
-    private String orderNumber(Order order) {
+    String orderNumber(Order order) {
         String date = order.getCreatedAt() == null ? LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
                 : order.getCreatedAt().toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
         return "ORD-" + date + "-" + String.format("%04d", order.getOrderId() == null ? 0 : order.getOrderId());
