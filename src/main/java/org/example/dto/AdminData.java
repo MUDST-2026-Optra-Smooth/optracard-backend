@@ -52,4 +52,19 @@ public final class AdminData {
             int pendingStoreVerifications, int pendingMarketplaceRequests, int lowStockProducts,
             List<MonthlyMetricResponse> monthlyMetrics, List<OrderResponse> recentOrders
     ) {}
+
+    public record TopProductResponse(Integer productId, String name, Integer soldQuantity) {}
+
+    public record WeeklyReportResponse(
+            double totalRevenue, double totalCost, double totalProfit, 
+            int orderCount, int itemsSold, 
+            int lowStockCount, int outOfStockCount, 
+            List<TopProductResponse> topProducts
+    ) {}
+
+    public record RestockPredictionResponse(
+            Integer productId, String name, Integer currentStock, 
+            Double avgDailySales, Integer daysUntilOut, 
+            Integer recommendedRestock, String statusMessage
+    ) {}
 }
