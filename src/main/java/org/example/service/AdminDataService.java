@@ -306,8 +306,12 @@ public class AdminDataService {
                 user == null ? "Unknown customer" : user.getUsername(), order.getCreatedAt(), order.getTotalPrice(),
                 orderSource(order), order.getStoreId(), order.getStoreName(), displayStatus(order.getStatus()),
                 order.getPaymentStatus(), order.getPaymentMethod(), order.getShippingMethod(), order.getShippingAddress(), order.getRecipientName(),
-                order.getRecipientPhone(), order.getTrackingNumber(), items, order.getSubtotal(), order.getPromotionCode(),
-                order.getPromotionName(), number(order.getDiscountAmount()));
+                order.getRecipientPhone(), order.getTrackingNumber(), items,
+                number(order.getShippingFee()),
+                order.getSubtotal() == null
+                        ? items.stream().mapToDouble(item -> number(item.price()) * integer(item.quantity())).sum()
+                        : order.getSubtotal(),
+                order.getPromotionCode(), order.getPromotionName(), number(order.getDiscountAmount()));
     }
 
     private AdminData.StoreResponse toStoreResponse(MarketplaceStore store, int productCount) {

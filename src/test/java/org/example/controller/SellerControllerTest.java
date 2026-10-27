@@ -48,6 +48,22 @@ class SellerControllerTest {
     }
 
     @Test
+    @DisplayName("order() returns one order of the seller's store")
+    void order_returnsTheRequestedOrder() {
+        when(authentication.getName()).thenReturn("seller@example.com");
+        org.example.dto.SellerOrderResponse order = new org.example.dto.SellerOrderResponse(
+                44, "ORD-44", 30, null, 250.0, "Processing", "PAID", "standard", "Address", "John", "0812345678", null,
+                List.of(), "Store A", 50.0, 200.0, null, null, 0.0
+        );
+        when(sellerService.getOrder("seller@example.com", 44)).thenReturn(order);
+
+        org.example.dto.SellerOrderResponse response = sellerController.order(authentication, 44);
+
+        assertEquals("ORD-44", response.orderNumber());
+        verify(sellerService).getOrder("seller@example.com", 44);
+    }
+
+    @Test
     @DisplayName("games() returns available games")
     void games_returnsAvailableGames() {
         CardGameOptionResponse game = new CardGameOptionResponse(1, "Pokemon");

@@ -187,6 +187,29 @@ class AdminDataServiceTest {
     }
 
     @Test
+    void getOrders_includesShippingFeeAndSubtotalForTheOrderSummary() {
+        org.example.model.OrderItem item = new org.example.model.OrderItem();
+        item.setProductId(9);
+        item.setQuantity(2);
+        item.setPrice(100d);
+        Order order = new Order();
+        order.setOrderId(5);
+        order.setShippingFee(50d);
+        order.setTotalPrice(250d);
+        order.setItems(List.of(item));
+        when(orderRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(order));
+        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of());
+        when(userRepository.findAll()).thenReturn(List.of());
+
+        AdminData.OrderResponse result = adminDataService.getOrders("ALL").get(0);
+
+        assertEquals(50d, result.shippingFee());
+        assertEquals(200d, result.subtotal());
+        assertEquals(0d, result.discountAmount());
+        assertNull(result.discountCode());
+    }
+
+    @Test
     void marketplaceOrders_areReadOnlyForAdministrators() {
         Order order = new Order();
         order.setOrderId(44);

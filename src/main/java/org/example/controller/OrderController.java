@@ -7,9 +7,11 @@ import org.example.dto.CheckoutResponse;
 import org.example.dto.OrderResponse;
 import org.example.dto.PromotionCodeRequest;
 import org.example.dto.PromotionPreviewResponse;
+import org.example.dto.ReorderResponse;
 import org.example.model.User;
 import org.example.repository.UserRepository;
 import org.example.service.OrderService;
+import org.example.service.ReorderService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -28,10 +30,12 @@ import java.util.List;
 @Tag(name = "Orders", description = "Order placement and order history endpoints")
 public class OrderController {
     private final OrderService orderService;
+    private final ReorderService reorderService;
     private final UserRepository userRepository;
 
-    public OrderController(OrderService orderService, UserRepository userRepository) {
+    public OrderController(OrderService orderService, ReorderService reorderService, UserRepository userRepository) {
         this.orderService = orderService;
+        this.reorderService = reorderService;
         this.userRepository = userRepository;
     }
 
@@ -56,6 +60,13 @@ public class OrderController {
     public ResponseEntity<PromotionPreviewResponse> previewPromotion(Authentication authentication,
                                                                        @RequestBody PromotionCodeRequest request) {
         return ResponseEntity.ok(orderService.previewPromotion(currentUser(authentication).getUaId(), request));
+    }
+
+    @Operation(summary = "Add the items of a past order back into the cart",
+            description = "Items that are deleted, inactive or out of stock are reported in the response instead of being added.")
+    @PostMapping("/{orderNumber}/reorder")
+    public ResponseEntity<ReorderResponse> reorder(Authentication authentication, @PathVariable String orderNumber) {
+        return ResponseEntity.ok(reorderService.reorder(currentUser(authentication).getUaId(), orderNumber));
     }
 
     private User currentUser(Authentication authentication) {
