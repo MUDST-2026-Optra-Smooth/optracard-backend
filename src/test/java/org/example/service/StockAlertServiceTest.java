@@ -11,6 +11,7 @@ import org.example.repository.ProductRepository;
 import org.example.repository.StockAlertReadRepository;
 import org.example.repository.StockAlertRepository;
 import org.example.repository.StockAlertSettingsRepository;
+import org.example.repository.StockAlertStoreSettingsRepository;
 import org.example.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,7 @@ class StockAlertServiceTest {
     @Mock private StockAlertRepository alertRepository;
     @Mock private StockAlertReadRepository readRepository;
     @Mock private StockAlertSettingsRepository settingsRepository;
+    @Mock private StockAlertStoreSettingsRepository storeSettingsRepository;
     @Mock private ProductRepository productRepository;
     @Mock private MarketplaceStoreRepository storeRepository;
     @Mock private UserRepository userRepository;
@@ -48,7 +50,7 @@ class StockAlertServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new StockAlertService(alertRepository, readRepository, settingsRepository,
+        service = new StockAlertService(alertRepository, readRepository, settingsRepository, storeSettingsRepository,
                 productRepository, storeRepository, userRepository);
     }
 
@@ -64,7 +66,7 @@ class StockAlertServiceTest {
         when(userRepository.findByEmail("seller@example.com")).thenReturn(Optional.of(seller));
         when(storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(7)).thenReturn(Optional.of(ownStore));
         when(productRepository.findByStore_StoreIdOrderByProIdDesc(11)).thenReturn(List.of(low, out));
-        when(settingsRepository.findById(1)).thenReturn(Optional.empty());
+        when(storeSettingsRepository.findById(11)).thenReturn(Optional.empty());
         when(alertRepository.findByProductId(anyInt())).thenReturn(Optional.empty());
         when(readRepository.findByUserIdAndAlertIdIn(anyInt(), any())).thenReturn(List.of());
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of(
@@ -80,7 +82,7 @@ class StockAlertServiceTest {
     }
 
     @Test
-    void adminSeesOfficialAndApprovedMarketplaceAlertsOnly() {
+    void adminSeesOfficialAlertsOnly() {
         User admin = user(1, "ADMIN");
         MarketplaceStore store = store(11, 7, "Approved Store", "APPROVED");
         Product official = product(1, "Official", 1, "OFFICIAL", null, true, "APPROVED");
@@ -94,24 +96,43 @@ class StockAlertServiceTest {
         when(alertRepository.findByProductId(anyInt())).thenReturn(Optional.empty());
         when(readRepository.findByUserIdAndAlertIdIn(anyInt(), any())).thenReturn(List.of());
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of(
-                activeAlert(201, 1, StockAlert.LOW_STOCK, 1),
-                activeAlert(202, 2, StockAlert.LOW_STOCK, 3)
+                activeAlert(201, 1, StockAlert.LOW_STOCK, 1)
         ));
 
         List<StockAlertResponse> alerts = service.getAlerts("admin@example.com");
 
-        assertEquals(Set.of(1, 2), alerts.stream().map(StockAlertResponse::productId).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(Set.of(1), alerts.stream().map(StockAlertResponse::productId).collect(java.util.stream.Collectors.toSet()));
     }
 
     @Test
-    void updatingSettingsRequiresAdministratorAndPersistsThreshold() {
+    void sellerCanUpdateOnlyOwnStoreThreshold() {
         User seller = user(7, "SELLER");
+        MarketplaceStore ownStore = store(11, 7, "Own Store", "APPROVED");
         when(userRepository.findByEmail("seller@example.com")).thenReturn(Optional.of(seller));
+        when(storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(7)).thenReturn(Optional.of(ownStore));
+
+        when(storeSettingsRepository.findById(11)).thenReturn(Optional.empty());
+
+        assertEquals(10, service.updateSettings("seller@example.com", new StockAlertSettingsRequest(10)).defaultThreshold());
+        ArgumentCaptor<org.example.model.StockAlertStoreSettings> sellerCaptor = ArgumentCaptor.forClass(org.example.model.StockAlertStoreSettings.class);
+        verify(storeSettingsRepository).save(sellerCaptor.capture());
+        assertEquals(11, sellerCaptor.getValue().getStoreId());
+        assertEquals(10, sellerCaptor.getValue().getDefaultThreshold());
+    }
+
+    @Test
+    void superAdminCannotAccessStockAlerts() {
+        User superAdmin = user(99, "SUPER_ADMIN");
+        when(userRepository.findByEmail("super_admin@example.com")).thenReturn(Optional.of(superAdmin));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> service.updateSettings("seller@example.com", new StockAlertSettingsRequest(10)));
+                () -> service.getAlerts("super_admin@example.com"));
 
         assertEquals(HttpStatus.FORBIDDEN.value(), exception.getStatusCode().value());
+    }
+
+    @Test
+    void adminUpdatesOfficialStoreThreshold() {
 
         User admin = user(1, "ADMIN");
         when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(admin));

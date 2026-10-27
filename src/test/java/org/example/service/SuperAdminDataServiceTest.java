@@ -29,7 +29,6 @@ class SuperAdminDataServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private CartRepository cartRepository;
-    @Mock private StockAlertSettingsRepository stockAlertSettingsRepository;
 
     private SuperAdminDataService service;
 
@@ -41,8 +40,7 @@ class SuperAdminDataServiceTest {
                 orderRepository,
                 userRepository,
                 passwordEncoder,
-                cartRepository,
-                stockAlertSettingsRepository
+                cartRepository
         );
     }
 

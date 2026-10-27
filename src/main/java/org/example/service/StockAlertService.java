@@ -8,12 +8,14 @@ import org.example.model.Product;
 import org.example.model.StockAlert;
 import org.example.model.StockAlertRead;
 import org.example.model.StockAlertSettings;
+import org.example.model.StockAlertStoreSettings;
 import org.example.model.User;
 import org.example.repository.MarketplaceStoreRepository;
 import org.example.repository.ProductRepository;
 import org.example.repository.StockAlertReadRepository;
 import org.example.repository.StockAlertRepository;
 import org.example.repository.StockAlertSettingsRepository;
+import org.example.repository.StockAlertStoreSettingsRepository;
 import org.example.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -36,6 +38,7 @@ public class StockAlertService {
     private final StockAlertRepository alertRepository;
     private final StockAlertReadRepository readRepository;
     private final StockAlertSettingsRepository settingsRepository;
+    private final StockAlertStoreSettingsRepository storeSettingsRepository;
     private final ProductRepository productRepository;
     private final MarketplaceStoreRepository storeRepository;
     private final UserRepository userRepository;
@@ -43,12 +46,14 @@ public class StockAlertService {
     public StockAlertService(StockAlertRepository alertRepository,
                              StockAlertReadRepository readRepository,
                              StockAlertSettingsRepository settingsRepository,
+                             StockAlertStoreSettingsRepository storeSettingsRepository,
                              ProductRepository productRepository,
                              MarketplaceStoreRepository storeRepository,
                              UserRepository userRepository) {
         this.alertRepository = alertRepository;
         this.readRepository = readRepository;
         this.settingsRepository = settingsRepository;
+        this.storeSettingsRepository = storeSettingsRepository;
         this.productRepository = productRepository;
         this.storeRepository = storeRepository;
         this.userRepository = userRepository;
@@ -58,7 +63,7 @@ public class StockAlertService {
     public List<StockAlertResponse> getAlerts(String email) {
         User user = currentUser(email);
         List<Product> products = accessibleProducts(user);
-        syncProducts(products, defaultThreshold());
+        syncProducts(products, thresholdFor(user));
         return toResponses(user, products);
     }
 
@@ -86,7 +91,7 @@ public class StockAlertService {
     public void markAllRead(String email) {
         User user = currentUser(email);
         List<Product> products = accessibleProducts(user);
-        syncProducts(products, defaultThreshold());
+        syncProducts(products, thresholdFor(user));
         List<StockAlertResponse> alerts = toResponses(user, products);
         LocalDateTime now = LocalDateTime.now();
         for (StockAlertResponse response : alerts) {
@@ -101,22 +106,37 @@ public class StockAlertService {
     }
 
     @Transactional(readOnly = true)
-    public StockAlertSettingsResponse getSettings() {
-        return new StockAlertSettingsResponse(defaultThreshold());
+    public StockAlertSettingsResponse getSettings(String email) {
+        return new StockAlertSettingsResponse(thresholdFor(currentUser(email)));
     }
 
     @Transactional
     public StockAlertSettingsResponse updateSettings(String email, StockAlertSettingsRequest request) {
-        requireStaff(email);
+        User user = currentUser(email);
         int threshold = validateThreshold(request == null ? null : request.defaultThreshold());
-        StockAlertSettings settings = settingsRepository.findById(StockAlertSettings.SETTINGS_ID)
-                .orElseGet(() -> {
-                    StockAlertSettings created = new StockAlertSettings();
-                    created.setId(StockAlertSettings.SETTINGS_ID);
-                    return created;
-                });
-        settings.setDefaultThreshold(threshold);
-        settingsRepository.save(settings);
+        String role = roleOf(user);
+        if ("ADMIN".equals(role)) {
+            StockAlertSettings settings = settingsRepository.findById(StockAlertSettings.SETTINGS_ID)
+                    .orElseGet(() -> {
+                        StockAlertSettings created = new StockAlertSettings();
+                        created.setId(StockAlertSettings.SETTINGS_ID);
+                        return created;
+                    });
+            settings.setDefaultThreshold(threshold);
+            settingsRepository.save(settings);
+        } else if ("SELLER".equals(role)) {
+            MarketplaceStore store = approvedStore(user);
+            StockAlertStoreSettings settings = storeSettingsRepository.findById(store.getStoreId())
+                    .orElseGet(() -> {
+                        StockAlertStoreSettings created = new StockAlertStoreSettings();
+                        created.setStoreId(store.getStoreId());
+                        return created;
+                    });
+            settings.setDefaultThreshold(threshold);
+            storeSettingsRepository.save(settings);
+        } else {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Stock alert settings are not available for this account");
+        }
         return new StockAlertSettingsResponse(threshold);
     }
 
@@ -190,16 +210,12 @@ public class StockAlertService {
     }
 
     private List<Product> accessibleProducts(User user) {
-        String role = user.getRole() == null ? "" : user.getRole().toUpperCase();
+        String role = roleOf(user);
         if ("SELLER".equals(role)) {
-            MarketplaceStore store = storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(user.getUaId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "An approved seller store is required"));
-            if (!"APPROVED".equalsIgnoreCase(store.getStoreStatus())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your seller store is not approved yet");
-            }
+            MarketplaceStore store = approvedStore(user);
             return productRepository.findByStore_StoreIdOrderByProIdDesc(store.getStoreId());
         }
-        if ("ADMIN".equals(role) || "SUPER_ADMIN".equals(role)) {
+        if ("ADMIN".equals(role)) {
             return productRepository.findAllByOrderByProIdDesc().stream()
                     .filter(this::isAdminVisible)
                     .toList();
@@ -208,24 +224,20 @@ public class StockAlertService {
     }
 
     private boolean isAdminVisible(Product product) {
-        if (!Boolean.TRUE.equals(product.getIsActive())) return false;
-        if (!"MARKETPLACE".equalsIgnoreCase(product.getListingSource())) return true;
-        return "APPROVED".equalsIgnoreCase(product.getApprovalStatus())
-                && product.getStore() != null
-                && "APPROVED".equalsIgnoreCase(product.getStore().getStoreStatus());
+        return Boolean.TRUE.equals(product.getIsActive())
+                && !"MARKETPLACE".equalsIgnoreCase(product.getListingSource());
     }
 
     private void requireProductAccess(User user, Product product) {
-        String role = user.getRole() == null ? "" : user.getRole().toUpperCase();
-        if ("ADMIN".equals(role) || "SUPER_ADMIN".equals(role)) {
+        String role = roleOf(user);
+        if ("ADMIN".equals(role)) {
             if (!isAdminVisible(product)) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Stock alert is not available for this product");
             return;
         }
         if (!"SELLER".equals(role) || product.getStore() == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Stock alert is not available for this account");
         }
-        MarketplaceStore store = storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(user.getUaId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "An approved seller store is required"));
+        MarketplaceStore store = approvedStore(user);
         if (!store.getStoreId().equals(product.getStore().getStoreId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Stock alert is not available for this product");
         }
@@ -236,19 +248,37 @@ public class StockAlertService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
     }
 
-    private void requireStaff(String email) {
-        User user = currentUser(email);
-        String role = user.getRole() == null ? "" : user.getRole().toUpperCase();
-        if (!"ADMIN".equals(role) && !"SUPER_ADMIN".equals(role)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators can change stock alert settings");
-        }
-    }
-
     private int defaultThreshold() {
         return settingsRepository.findById(StockAlertSettings.SETTINGS_ID)
                 .map(StockAlertSettings::getDefaultThreshold)
                 .filter(value -> value != null && value >= 1)
                 .orElse(StockAlertSettings.DEFAULT_THRESHOLD);
+    }
+
+    private int thresholdFor(User user) {
+        String role = roleOf(user);
+        if ("ADMIN".equals(role)) return defaultThreshold();
+        if ("SELLER".equals(role)) {
+            MarketplaceStore store = approvedStore(user);
+            return storeSettingsRepository.findById(store.getStoreId())
+                    .map(StockAlertStoreSettings::getDefaultThreshold)
+                    .filter(value -> value != null && value >= 1)
+                    .orElse(StockAlertStoreSettings.DEFAULT_THRESHOLD);
+        }
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Stock alerts are not available for this account");
+    }
+
+    private MarketplaceStore approvedStore(User user) {
+        MarketplaceStore store = storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(user.getUaId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "An approved seller store is required"));
+        if (!"APPROVED".equalsIgnoreCase(store.getStoreStatus())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your seller store is not approved yet");
+        }
+        return store;
+    }
+
+    private String roleOf(User user) {
+        return user.getRole() == null ? "" : user.getRole().toUpperCase();
     }
 
     private int validateThreshold(Integer value) {

@@ -65,6 +65,11 @@ INSERT INTO stock_alert_settings (setting_id, default_threshold)
 VALUES (1, 5)
 ON CONFLICT (setting_id) DO NOTHING;
 
+CREATE TABLE IF NOT EXISTS stock_alert_store_settings (
+    store_id INT PRIMARY KEY REFERENCES marketplace_stores(store_id) ON DELETE CASCADE,
+    default_threshold INT NOT NULL DEFAULT 5 CHECK (default_threshold >= 1)
+);
+
 CREATE TABLE IF NOT EXISTS stock_alerts (
     stock_alert_id SERIAL PRIMARY KEY,
     pro_id INT NOT NULL UNIQUE REFERENCES products(pro_id) ON DELETE CASCADE,

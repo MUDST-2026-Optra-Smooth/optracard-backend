@@ -50,8 +50,8 @@ public class StockAlertController {
     }
 
     @GetMapping("/settings")
-    public StockAlertSettingsResponse settings() {
-        return stockAlertService.getSettings();
+    public StockAlertSettingsResponse settings(Authentication authentication) {
+        return stockAlertService.getSettings(authentication.getName());
     }
 
     @PutMapping("/settings")

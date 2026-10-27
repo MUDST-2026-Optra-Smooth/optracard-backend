@@ -113,9 +113,9 @@ public class SecurityConfig {
                         )
                         
                         .requestMatchers(HttpMethod.POST, "/api/products", "/api/products/**").hasAnyAuthority("ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ROLE_SUPER_ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/stock-alerts/settings").hasAnyAuthority("SELLER", "ROLE_SELLER", "ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ROLE_SUPER_ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/stock-alerts/settings").hasAnyAuthority("ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ROLE_SUPER_ADMIN")
-                        .requestMatchers("/api/stock-alerts", "/api/stock-alerts/**").hasAnyAuthority("SELLER", "ROLE_SELLER", "ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/stock-alerts/settings").hasAnyAuthority("SELLER", "ROLE_SELLER", "ADMIN", "ROLE_ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/stock-alerts/settings").hasAnyAuthority("SELLER", "ROLE_SELLER", "ADMIN", "ROLE_ADMIN")
+                        .requestMatchers("/api/stock-alerts", "/api/stock-alerts/**").hasAnyAuthority("SELLER", "ROLE_SELLER", "ADMIN", "ROLE_ADMIN")
                         .requestMatchers("/api/superadmin", "/api/superadmin/**").hasAnyAuthority("SUPER_ADMIN", "ROLE_SUPER_ADMIN")
                         
                         .requestMatchers("/api/admin", "/api/admin/**").hasAnyAuthority(
