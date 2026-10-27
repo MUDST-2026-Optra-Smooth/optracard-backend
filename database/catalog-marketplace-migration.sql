@@ -60,10 +60,29 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_payment_status VARCHAR(30) NOT N
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_store_id INT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_store_name VARCHAR(255);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_source VARCHAR(20) NOT NULL DEFAULT 'OFFICIAL';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_subtotal DECIMAL(10,2);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_promotion_code VARCHAR(50);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_promotion_name VARCHAR(255);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_discount_amount DECIMAL(10,2) NOT NULL DEFAULT 0;
 UPDATE orders SET ord_payment_status = 'PENDING' WHERE ord_payment_status IS NULL;
 UPDATE orders SET ord_source = 'OFFICIAL' WHERE ord_source IS NULL;
 ALTER TABLE orders ALTER COLUMN ord_payment_status SET DEFAULT 'PENDING', ALTER COLUMN ord_payment_status SET NOT NULL;
 ALTER TABLE orders ALTER COLUMN ord_source SET DEFAULT 'OFFICIAL', ALTER COLUMN ord_source SET NOT NULL;
+
+CREATE TABLE IF NOT EXISTS promotions (
+    promo_id SERIAL PRIMARY KEY,
+    promo_code VARCHAR(50) NOT NULL UNIQUE,
+    promo_name VARCHAR(255) NOT NULL,
+    promo_discount_type VARCHAR(20) NOT NULL CHECK (promo_discount_type IN ('PERCENTAGE', 'FIXED_AMOUNT')),
+    promo_discount_value DECIMAL(10,2) NOT NULL CHECK (promo_discount_value > 0),
+    promo_minimum_order DECIMAL(10,2) NOT NULL DEFAULT 0 CHECK (promo_minimum_order >= 0),
+    promo_usage_limit INT CHECK (promo_usage_limit IS NULL OR promo_usage_limit > 0),
+    promo_usage_count INT NOT NULL DEFAULT 0 CHECK (promo_usage_count >= 0),
+    promo_starts_at TIMESTAMP NOT NULL,
+    promo_ends_at TIMESTAMP NOT NULL,
+    promo_active BOOLEAN NOT NULL DEFAULT TRUE,
+    CHECK (promo_ends_at > promo_starts_at)
+);
 
 CREATE INDEX IF NOT EXISTS ix_marketplace_stores_seller_user
     ON marketplace_stores (seller_user_id, store_id DESC);

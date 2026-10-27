@@ -6,6 +6,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB:-optracard}
+      TZ: Asia/Bangkok
     ports:
       - "5432:5432"
     volumes:
@@ -25,6 +26,8 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?POSTGRES_USER must be set}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      TZ: Asia/Bangkok
+      JAVA_TOOL_OPTIONS: -Duser.timezone=Asia/Bangkok
 
 volumes:
   postgres_data:
