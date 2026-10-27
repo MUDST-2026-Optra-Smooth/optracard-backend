@@ -5,6 +5,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.example.dto.CreateOrderRequest;
 import org.example.dto.CheckoutResponse;
 import org.example.dto.OrderResponse;
+import org.example.dto.PromotionCodeRequest;
+import org.example.dto.PromotionPreviewResponse;
 import org.example.model.User;
 import org.example.repository.UserRepository;
 import org.example.service.OrderService;
@@ -48,6 +50,12 @@ public class OrderController {
     @PostMapping
     public ResponseEntity<CheckoutResponse> placeOrder(Authentication authentication, @RequestBody CreateOrderRequest request) {
         return ResponseEntity.ok(orderService.placeOrder(currentUser(authentication).getUaId(), request));
+    }
+
+    @PostMapping("/promotion-preview")
+    public ResponseEntity<PromotionPreviewResponse> previewPromotion(Authentication authentication,
+                                                                       @RequestBody PromotionCodeRequest request) {
+        return ResponseEntity.ok(orderService.previewPromotion(currentUser(authentication).getUaId(), request));
     }
 
     private User currentUser(Authentication authentication) {

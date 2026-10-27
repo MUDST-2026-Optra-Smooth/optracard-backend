@@ -4,6 +4,8 @@ import org.example.dto.CheckoutResponse;
 import org.example.dto.CreateOrderRequest;
 import org.example.dto.OrderItemResponse;
 import org.example.dto.OrderResponse;
+import org.example.dto.PromotionCodeRequest;
+import org.example.dto.PromotionPreviewResponse;
 import org.example.model.Cart;
 import org.example.model.CartItem;
 import org.example.model.Order;
@@ -19,6 +21,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,11 +36,14 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
+    private final PromotionService promotionService;
 
-    public OrderService(OrderRepository orderRepository, CartRepository cartRepository, ProductRepository productRepository) {
+    public OrderService(OrderRepository orderRepository, CartRepository cartRepository, ProductRepository productRepository,
+                        PromotionService promotionService) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
         this.productRepository = productRepository;
+        this.promotionService = promotionService;
     }
 
     /**
@@ -77,7 +84,16 @@ public class OrderService {
                     "Store pickup is available only when every item is from the same seller. Choose Standard Delivery.");
         }
 
+        double cartSubtotal = itemsBySeller.values().stream().flatMap(List::stream)
+                .mapToDouble(line -> priceOf(line.product()) * line.quantity()).sum();
+        PromotionService.AppliedPromotion promotion = hasText(request.promotionCode())
+                ? promotionService.applyForCheckout(request.promotionCode(), cartSubtotal)
+                : PromotionService.AppliedPromotion.none();
+
         List<OrderResponse> placedOrders = new ArrayList<>();
+        double remainingDiscount = promotion.discountAmount();
+        int sellerIndex = 0;
+        int sellerCount = itemsBySeller.size();
         for (Map.Entry<Seller, List<CartLine>> entry : itemsBySeller.entrySet()) {
             Seller seller = entry.getKey();
             Order order = newOrder(userId, request, payment, shipping, seller);
@@ -85,7 +101,7 @@ public class OrderService {
 
             for (CartLine line : entry.getValue()) {
                 Product product = line.product();
-                double price = product.getProPriceOfSell() == null ? 0d : product.getProPriceOfSell();
+                double price = priceOf(product);
                 itemsTotal += price * line.quantity();
 
                 OrderItem item = new OrderItem();
@@ -96,7 +112,19 @@ public class OrderService {
                 order.getItems().add(item);
                 product.setProQuantity(product.getProQuantity() - line.quantity());
             }
-            order.setTotalPrice(itemsTotal + order.getShippingFee());
+            sellerIndex++;
+            double orderDiscount = promotion.isApplied()
+                    ? sellerIndex == sellerCount
+                        ? remainingDiscount
+                        : money(promotion.discountAmount() * itemsTotal / cartSubtotal)
+                    : 0d;
+            orderDiscount = Math.min(itemsTotal, orderDiscount);
+            remainingDiscount = money(remainingDiscount - orderDiscount);
+            order.setSubtotal(money(itemsTotal));
+            order.setPromotionCode(promotion.code());
+            order.setPromotionName(promotion.name());
+            order.setDiscountAmount(orderDiscount);
+            order.setTotalPrice(money(itemsTotal - orderDiscount + number(order.getShippingFee())));
             placedOrders.add(toResponse(orderRepository.saveAndFlush(order)));
         }
 
@@ -104,6 +132,28 @@ public class OrderService {
         cartRepository.save(cart);
         double total = placedOrders.stream().mapToDouble(order -> order.total() == null ? 0d : order.total()).sum();
         return new CheckoutResponse(placedOrders, placedOrders.size(), total);
+    }
+
+    @Transactional(readOnly = true)
+    public PromotionPreviewResponse previewPromotion(Integer userId, PromotionCodeRequest request) {
+        Cart cart = cartRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Your cart is empty"));
+        if (cart.getItems().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Your cart is empty");
+        }
+        double subtotal = 0d;
+        for (CartItem cartItem : cart.getItems()) {
+            Product product = productRepository.findById(cartItem.getProductId())
+                    .filter(this::isPurchasable)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "A product in your cart is no longer available"));
+            int quantity = cartItem.getQuantity();
+            if (quantity < 1 || product.getProQuantity() == null || product.getProQuantity() < quantity) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not enough stock for " + product.getProName());
+            }
+            subtotal += priceOf(product) * quantity;
+        }
+        return promotionService.preview(request == null ? null : request.code(), subtotal);
     }
 
     @Transactional(readOnly = true)
@@ -165,11 +215,15 @@ public class OrderService {
         if (storeName == null) storeName = items.isEmpty() ? OFFICIAL_STORE_NAME : items.get(0).storeName();
         String source = normalize(order.getSource());
         if (source == null) source = "OFFICIAL";
+        double subtotal = order.getSubtotal() == null
+                ? items.stream().mapToDouble(item -> number(item.price()) * (item.quantity() == null ? 0 : item.quantity())).sum()
+                : order.getSubtotal();
         return new OrderResponse(order.getOrderId(), orderNumber(order), order.getStoreId(), storeName, source,
                 order.getCreatedAt(), order.getTotalPrice(), order.getPaymentMethod(), order.getPaymentStatus(),
                 displayStatus(order.getStatus()), order.getShippingMethod(), order.getShippingFee(),
                 order.getTrackingNumber(),
-                order.getShippingAddress(), order.getRecipientName(), order.getRecipientPhone(), items);
+                order.getShippingAddress(), order.getRecipientName(), order.getRecipientPhone(), items,
+                subtotal, order.getPromotionCode(), order.getPromotionName(), number(order.getDiscountAmount()));
     }
 
     private void validateRequest(CreateOrderRequest request, String shipping, String payment) {
@@ -217,6 +271,16 @@ public class OrderService {
                 && (!"MARKETPLACE".equalsIgnoreCase(product.getListingSource())
                 || ("APPROVED".equalsIgnoreCase(product.getApprovalStatus())
                 && product.getStore() != null && "APPROVED".equalsIgnoreCase(product.getStore().getStoreStatus())));
+    }
+
+    private double priceOf(Product product) {
+        return product.getProPriceOfSell() == null ? 0d : product.getProPriceOfSell();
+    }
+
+    private boolean hasText(String value) { return value != null && !value.trim().isEmpty(); }
+    private double number(Double value) { return value == null ? 0d : value; }
+    private double money(double value) {
+        return BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
     private record Seller(Integer storeId, String storeName, String source) {}

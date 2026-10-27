@@ -306,7 +306,8 @@ public class AdminDataService {
                 user == null ? "Unknown customer" : user.getUsername(), order.getCreatedAt(), order.getTotalPrice(),
                 orderSource(order), order.getStoreId(), order.getStoreName(), displayStatus(order.getStatus()),
                 order.getPaymentStatus(), order.getPaymentMethod(), order.getShippingMethod(), order.getShippingAddress(), order.getRecipientName(),
-                order.getRecipientPhone(), order.getTrackingNumber(), items);
+                order.getRecipientPhone(), order.getTrackingNumber(), items, order.getSubtotal(), order.getPromotionCode(),
+                order.getPromotionName(), number(order.getDiscountAmount()));
     }
 
     private AdminData.StoreResponse toStoreResponse(MarketplaceStore store, int productCount) {

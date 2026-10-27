@@ -39,6 +39,9 @@ class OrderServiceTest {
     @Mock
     private ProductRepository productRepository;
 
+    @Mock
+    private PromotionService promotionService;
+
     private OrderService orderService;
     private Product officialProduct;
     private Product marketplaceProduct;
@@ -47,7 +50,7 @@ class OrderServiceTest {
 
     @BeforeEach
     void setUp() {
-        orderService = new OrderService(orderRepository, cartRepository, productRepository);
+        orderService = new OrderService(orderRepository, cartRepository, productRepository, promotionService);
         officialProduct = product(10, "Official card", 100d, "OFFICIAL", null);
 
         MarketplaceStore seller = new MarketplaceStore();
@@ -107,6 +110,29 @@ class OrderServiceTest {
         assertEquals(4, marketplaceProduct.getProQuantity());
         assertEquals(0, cart.getItems().size());
         verify(orderRepository, times(2)).saveAndFlush(any(Order.class));
+    }
+
+    @Test
+    void checkoutCalculatesPromotionOnTheServerAndSnapshotsItAcrossSellerOrders() {
+        when(promotionService.applyForCheckout("SAVE10", 300d))
+                .thenReturn(new PromotionService.AppliedPromotion("SAVE10", "Ten percent off", 30d));
+
+        CheckoutResponse result = orderService.placeOrder(7,
+                new CreateOrderRequest("Kendo", "0812345678", "Bangkok", "standard", "cash", "SAVE10"));
+
+        assertEquals(370d, result.total());
+        Order officialOrder = savedOrders.stream()
+                .filter(order -> "OFFICIAL".equals(order.getSource())).findFirst().orElseThrow();
+        Order marketplaceOrder = savedOrders.stream()
+                .filter(order -> "MARKETPLACE".equals(order.getSource())).findFirst().orElseThrow();
+        assertEquals(100d, officialOrder.getSubtotal());
+        assertEquals(10d, officialOrder.getDiscountAmount());
+        assertEquals(140d, officialOrder.getTotalPrice());
+        assertEquals("SAVE10", officialOrder.getPromotionCode());
+        assertEquals(200d, marketplaceOrder.getSubtotal());
+        assertEquals(20d, marketplaceOrder.getDiscountAmount());
+        assertEquals(230d, marketplaceOrder.getTotalPrice());
+        verify(promotionService).applyForCheckout("SAVE10", 300d);
     }
 
     private Product product(Integer id, String name, Double price, String source, MarketplaceStore store) {
