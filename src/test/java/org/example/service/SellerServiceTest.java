@@ -125,6 +125,58 @@ class SellerServiceTest {
     }
 
     @Test
+    void getOrder_returnsTheSellersOrderWithSummaryFields() {
+        User seller = new User();
+        seller.setUaId(7);
+        MarketplaceStore sellerStore = new MarketplaceStore();
+        sellerStore.setStoreId(9);
+        sellerStore.setStoreStatus("APPROVED");
+
+        org.example.model.OrderItem line = new org.example.model.OrderItem();
+        line.setProductId(31);
+        line.setQuantity(2);
+        line.setPrice(100d);
+        Order order = new Order();
+        order.setOrderId(44);
+        order.setUserId(30);
+        order.setStoreId(9);
+        order.setStoreName("Independent TCG");
+        order.setShippingFee(50d);
+        order.setTotalPrice(250d);
+        order.setPaymentStatus("PAID");
+        order.setItems(java.util.List.of(line));
+
+        when(userRepository.findByEmail("seller@example.test")).thenReturn(Optional.of(seller));
+        when(storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(7)).thenReturn(Optional.of(sellerStore));
+        when(orderRepository.findByOrderIdAndStoreId(44, 9)).thenReturn(Optional.of(order));
+
+        var result = sellerService.getOrder("seller@example.test", 44);
+
+        assertEquals("Independent TCG", result.storeName());
+        assertEquals(50d, result.shippingFee());
+        assertEquals(200d, result.subtotal());
+        assertEquals(0d, result.discountAmount());
+        assertEquals(250d, result.total());
+    }
+
+    @Test
+    void getOrder_hidesOrdersOfOtherStores() {
+        User seller = new User();
+        seller.setUaId(7);
+        MarketplaceStore sellerStore = new MarketplaceStore();
+        sellerStore.setStoreId(9);
+        sellerStore.setStoreStatus("APPROVED");
+        when(userRepository.findByEmail("seller@example.test")).thenReturn(Optional.of(seller));
+        when(storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(7)).thenReturn(Optional.of(sellerStore));
+        when(orderRepository.findByOrderIdAndStoreId(77, 9)).thenReturn(Optional.empty());
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> sellerService.getOrder("seller@example.test", 77));
+
+        assertEquals(org.springframework.http.HttpStatus.NOT_FOUND, error.getStatusCode());
+    }
+
+    @Test
     void updateProductActive_changesOnlyTheSellerOwnedListingVisibility() {
         User seller = new User();
         seller.setUaId(7);

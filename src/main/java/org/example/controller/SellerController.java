@@ -78,6 +78,11 @@ public class SellerController {
         return sellerService.getOrders(authentication.getName());
     }
 
+    @GetMapping("/orders/{id}")
+    public SellerOrderResponse order(Authentication authentication, @PathVariable Integer id) {
+        return sellerService.getOrder(authentication.getName(), id);
+    }
+
     @PutMapping("/orders/{id}/status")
     public SellerOrderResponse updateOrderStatus(Authentication authentication,
                                                   @PathVariable Integer id,

@@ -129,6 +129,15 @@ public class SellerService {
                 .stream().map(this::toOrderResponse).toList();
     }
 
+    /** Returns one order of the seller's own store. Orders of other stores look like "not found". */
+    @Transactional(readOnly = true)
+    public SellerOrderResponse getOrder(String email, Integer orderId) {
+        MarketplaceStore store = requireApprovedStore(email);
+        return orderRepository.findByOrderIdAndStoreId(orderId, store.getStoreId())
+                .map(this::toOrderResponse)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
+    }
+
     @Transactional
     public SellerOrderResponse updateOrderStatus(String email, Integer orderId, String status, String trackingNumber) {
         MarketplaceStore store = requireApprovedStore(email);
@@ -256,7 +265,12 @@ public class SellerService {
         }).toList();
         return new SellerOrderResponse(order.getOrderId(), orderNumber(order), order.getUserId(), order.getCreatedAt(),
                 order.getTotalPrice(), displayStatus(order.getStatus()), order.getPaymentStatus(), order.getShippingMethod(),
-                order.getShippingAddress(), order.getRecipientName(), order.getRecipientPhone(), order.getTrackingNumber(), items);
+                order.getShippingAddress(), order.getRecipientName(), order.getRecipientPhone(), order.getTrackingNumber(), items,
+                order.getStoreName(), order.getShippingFee() == null ? 0d : order.getShippingFee(),
+                // The discount fields are filled in by the promotion feature; until an order stores
+                // them the subtotal is derived from the line items and no discount is reported.
+                items.stream().mapToDouble(item -> (item.price() == null ? 0d : item.price()) * (item.quantity() == null ? 0 : item.quantity())).sum(),
+                null, null, 0d);
     }
 
     private String orderNumber(Order order) {
