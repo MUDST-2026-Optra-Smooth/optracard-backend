@@ -30,8 +30,19 @@ public final class AdminData {
             Integer id, String orderNumber, Integer buyerId, String buyerName, LocalDateTime createdAt,
             Double total, String source, Integer storeId, String storeName, String status, String paymentStatus,
             String paymentMethod, String shippingMethod, String shippingAddress, String recipientName, String recipientPhone,
-            String trackingNumber, List<OrderItemResponse> items
-    ) {}
+            String trackingNumber, List<OrderItemResponse> items, Double subtotal, String promotionCode,
+            String promotionName, Double discountAmount
+    ) {
+        public OrderResponse(Integer id, String orderNumber, Integer buyerId, String buyerName, LocalDateTime createdAt,
+                             Double total, String source, Integer storeId, String storeName, String status,
+                             String paymentStatus, String paymentMethod, String shippingMethod, String shippingAddress,
+                             String recipientName, String recipientPhone, String trackingNumber,
+                             List<OrderItemResponse> items) {
+            this(id, orderNumber, buyerId, buyerName, createdAt, total, source, storeId, storeName, status,
+                    paymentStatus, paymentMethod, shippingMethod, shippingAddress, recipientName, recipientPhone,
+                    trackingNumber, items, null, null, null, 0d);
+        }
+    }
 
     public record OrderStatusRequest(String status, String trackingNumber) {}
 

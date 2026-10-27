@@ -77,6 +77,10 @@ CREATE TABLE Orders (
      Ord_ID SERIAL PRIMARY KEY,
      UA_ID INT REFERENCES Users_Admins(UA_ID),
      Ord_Total_Price DECIMAL(10, 2) NOT NULL,
+     Ord_Subtotal DECIMAL(10, 2),
+     Ord_Promotion_Code VARCHAR(50),
+     Ord_Promotion_Name VARCHAR(255),
+     Ord_Discount_Amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
      Ord_PayMethod VARCHAR(100),
      Ord_Status VARCHAR(50),
      Ord_ShippingAddress TEXT,
@@ -92,6 +96,21 @@ CREATE TABLE Orders (
      Ord_Store_ID INT,
      Ord_Store_Name VARCHAR(255),
      Ord_Source VARCHAR(20) NOT NULL DEFAULT 'OFFICIAL'
+);
+
+CREATE TABLE Promotions (
+     Promo_ID SERIAL PRIMARY KEY,
+     Promo_Code VARCHAR(50) NOT NULL UNIQUE,
+     Promo_Name VARCHAR(255) NOT NULL,
+     Promo_Discount_Type VARCHAR(20) NOT NULL CHECK (Promo_Discount_Type IN ('PERCENTAGE', 'FIXED_AMOUNT')),
+     Promo_Discount_Value DECIMAL(10, 2) NOT NULL CHECK (Promo_Discount_Value > 0),
+     Promo_Minimum_Order DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (Promo_Minimum_Order >= 0),
+     Promo_Usage_Limit INT CHECK (Promo_Usage_Limit IS NULL OR Promo_Usage_Limit > 0),
+     Promo_Usage_Count INT NOT NULL DEFAULT 0 CHECK (Promo_Usage_Count >= 0),
+     Promo_Starts_At TIMESTAMP NOT NULL,
+     Promo_Ends_At TIMESTAMP NOT NULL,
+     Promo_Active BOOLEAN NOT NULL DEFAULT TRUE,
+     CHECK (Promo_Ends_At > Promo_Starts_At)
 );
 
 CREATE TABLE Carts (
