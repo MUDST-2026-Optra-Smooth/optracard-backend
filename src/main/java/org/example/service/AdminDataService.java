@@ -384,4 +384,50 @@ public class AdminDataService {
         }
         return normalized;
     }
+
+@Transactional(readOnly = true)
+public List<AdminData.RestockPredictionResponse> getSmartRestockPredictions() {
+    int daysHistory = 30;
+    java.time.LocalDateTime startDate = java.time.LocalDateTime.now().minusDays(daysHistory);
+    List<Order> orders = orderRepository.findByCreatedAtBetween(startDate, java.time.LocalDateTime.now());
+    
+    Map<Integer, Integer> salesInLast30Days = new HashMap<>();
+    for (Order order : orders) {
+        for (OrderItem item : order.getItems()) {
+            salesInLast30Days.merge(item.getProductId(), integer(item.getQuantity()), Integer::sum);
+        }
+    }
+
+    List<AdminData.RestockPredictionResponse> predictions = new ArrayList<>();
+    List<Product> officialProducts = productRepository.findAllByOrderByProIdDesc().stream()
+            .filter(this::isOfficial).filter(p -> Boolean.TRUE.equals(p.getIsActive())).toList();
+
+    for (Product p : officialProducts) {
+        int currentStock = integer(p.getProQuantity());
+        int totalSold = salesInLast30Days.getOrDefault(p.getProId(), 0);
+        
+        if (totalSold == 0) {
+            predictions.add(new AdminData.RestockPredictionResponse(
+                    p.getProId(), p.getProName(), currentStock, 
+                    0.0, null, 0, "There is not enough information."
+            ));
+        } else {
+            double avgDailySales = (double) totalSold / daysHistory;
+            int daysUntilOut = (int) (currentStock / avgDailySales);
+            
+            int targetStockFor14Days = (int) Math.ceil(avgDailySales * 14);
+            int recommendedRestock = Math.max(0, targetStockFor14Days - currentStock);
+            
+            String message = daysUntilOut <= 7 ? "Restock immediately!" : "Stock is still sufficient.";
+            if (currentStock == 0) message = "Out of stock!";
+
+            predictions.add(new AdminData.RestockPredictionResponse(
+                    p.getProId(), p.getProName(), currentStock, 
+                    Math.round(avgDailySales * 100.0) / 100.0, daysUntilOut, 
+                    recommendedRestock, message
+            ));
+        }
+    }
+    return predictions;
+}
 }
