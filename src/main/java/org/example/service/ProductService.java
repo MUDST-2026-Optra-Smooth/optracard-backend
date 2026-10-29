@@ -3,6 +3,8 @@ package org.example.service;
 import org.example.dto.CatalogProductResponse;
 import org.example.dto.CatalogStoreResponse;
 import org.example.dto.MarketplaceStoreProfileResponse;
+import org.example.dto.CatalogPageResponse;
+import org.example.dto.CatalogFilterOptionsResponse;
 import org.example.model.MarketplaceStore;
 import org.example.model.Product;
 import org.example.repository.MarketplaceStoreRepository;
@@ -16,6 +18,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import static org.example.service.CatalogProductSpecification.publicProduct;
 
 @Service
 public class ProductService {
@@ -103,6 +108,26 @@ public class ProductService {
                         .thenComparing(result -> result.product().getProId(), Comparator.reverseOrder()))
                 .map(result -> toCatalogResponse(result.product()))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public CatalogPageResponse catalog(String q,String type,String game,Double min,Double max,String language,String source,Integer storeId,String sort,int page,int pageSize) {
+        Sort ordering=switch(sort){case "price_asc"->Sort.by("proPriceOfSell").ascending().and(Sort.by("proId").descending());case "price_desc"->Sort.by("proPriceOfSell").descending().and(Sort.by("proId").descending());case "name_asc"->Sort.by("proName").ascending().and(Sort.by("proId").descending());default->Sort.by("proId").descending();};
+        var result=productRepository.findAll(publicProduct(q,type,game,min,max,language,source,storeId),PageRequest.of(page,pageSize,ordering));
+        return new CatalogPageResponse(result.getContent().stream().map(this::toCatalogResponse).toList(),result.getNumber(),result.getSize(),result.getTotalElements(),result.getTotalPages(),sort);
+    }
+
+    @Transactional(readOnly = true)
+    public CatalogFilterOptionsResponse filterOptions() {
+        var types=productRepository.findPublicCatalogTypes().stream().filter(Objects::nonNull).sorted().toList();
+        var games=productRepository.findPublicCatalogGames().stream().map(row -> new CatalogFilterOptionsResponse.GameOption((Integer) row[0], (String) row[1])).sorted(java.util.Comparator.comparing(CatalogFilterOptionsResponse.GameOption::name)).toList();
+        var languages=productRepository.findPublicCatalogLanguages().stream().filter(Objects::nonNull).sorted().toList();
+        var sources=productRepository.findPublicCatalogSources().stream().filter(Objects::nonNull).sorted().toList();
+        var stores=productRepository.findPublicCatalogStores().stream().map(row -> new CatalogFilterOptionsResponse.StoreOption((Integer) row[0], (String) row[1])).sorted(java.util.Comparator.comparing(CatalogFilterOptionsResponse.StoreOption::name)).toList();
+        var priceRange=productRepository.findPublicCatalogPriceRange();
+        double min=priceRange[0] instanceof Number value ? value.doubleValue() : 0d;
+        double max=priceRange[1] instanceof Number value ? value.doubleValue() : 0d;
+        return new CatalogFilterOptionsResponse(types,games,languages,sources,stores,new CatalogFilterOptionsResponse.PriceRange(min,max));
     }
 
     private record ScoredProduct(Product product, int score) {}
