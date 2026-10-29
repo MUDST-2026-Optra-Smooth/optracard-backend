@@ -10,6 +10,14 @@ CREATE TABLE IF NOT EXISTS marketplace_stores (
     store_description TEXT
 );
 
+CREATE INDEX IF NOT EXISTS idx_products_catalog_active ON products (is_active);
+CREATE INDEX IF NOT EXISTS idx_products_catalog_source ON products (pro_listing_source, pro_approval_status);
+CREATE INDEX IF NOT EXISTS idx_products_catalog_game ON products (game_id);
+CREATE INDEX IF NOT EXISTS idx_products_catalog_store ON products (store_id);
+CREATE INDEX IF NOT EXISTS idx_products_catalog_price ON products (pro_priceofsell);
+CREATE INDEX IF NOT EXISTS idx_products_catalog_type ON products (pro_type);
+CREATE INDEX IF NOT EXISTS idx_products_catalog_language ON products (pro_language);
+
 -- Seller application details collected by the My Shop wizard. These columns
 -- keep an application in PENDING status until an administrator reviews it.
 ALTER TABLE marketplace_stores ADD COLUMN IF NOT EXISTS physical_store BOOLEAN NOT NULL DEFAULT FALSE;
