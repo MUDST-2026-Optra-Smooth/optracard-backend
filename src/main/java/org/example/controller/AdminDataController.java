@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+//import org.example.dto.WeeklyReportResponse;
+//import org.example.service.ReportService;
 
 import java.util.List;
 
@@ -93,5 +95,10 @@ public class AdminDataController {
     @GetMapping("/marketplace/products/{id}")
     public AdminData.ProductResponse marketplaceProduct(@PathVariable Integer id) {
         return adminDataService.getMarketplaceProduct(id);
+    }
+
+    @GetMapping("/reports/restock-predictions")
+    public ResponseEntity<List<AdminData.RestockPredictionResponse>> getRestockPredictions() {
+        return ResponseEntity.ok(adminDataService.getSmartRestockPredictions());
     }
 }
