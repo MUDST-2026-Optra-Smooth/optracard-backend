@@ -135,3 +135,31 @@ CREATE TABLE OrderItems (
      OrdItems_Price DECIMAL(10, 2) NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS stock_alert_settings (
+     setting_id INT PRIMARY KEY,
+     default_threshold INT NOT NULL DEFAULT 5 CHECK (default_threshold >= 1)
+);
+
+INSERT INTO stock_alert_settings (setting_id, default_threshold)
+VALUES (1, 5)
+ON CONFLICT (setting_id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS stock_alerts (
+     stock_alert_id SERIAL PRIMARY KEY,
+     pro_id INT NOT NULL UNIQUE REFERENCES Products(Pro_ID) ON DELETE CASCADE,
+     alert_type VARCHAR(30) NOT NULL CHECK (alert_type IN ('LOW_STOCK', 'OUT_OF_STOCK')),
+     current_stock INT NOT NULL,
+     threshold INT NOT NULL CHECK (threshold >= 1),
+     activated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     resolved_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS stock_alert_reads (
+     stock_alert_read_id SERIAL PRIMARY KEY,
+     stock_alert_id INT NOT NULL REFERENCES stock_alerts(stock_alert_id) ON DELETE CASCADE,
+     ua_id INT NOT NULL REFERENCES Users_Admins(UA_ID) ON DELETE CASCADE,
+     read_at TIMESTAMP NOT NULL,
+     CONSTRAINT uq_stock_alert_read_user UNIQUE (stock_alert_id, ua_id)
+);
+

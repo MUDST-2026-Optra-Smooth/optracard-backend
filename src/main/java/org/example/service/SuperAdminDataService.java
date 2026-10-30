@@ -4,11 +4,13 @@ import org.example.dto.SuperAdminData;
 import org.example.model.MarketplaceStore;
 import org.example.model.Order;
 import org.example.model.Product;
+import org.example.model.StockAlertSettings;
 import org.example.model.User;
 import org.example.repository.MarketplaceStoreRepository;
 import org.example.repository.CartRepository;
 import org.example.repository.OrderRepository;
 import org.example.repository.ProductRepository;
+import org.example.repository.StockAlertSettingsRepository;
 import org.example.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -37,19 +39,22 @@ public class SuperAdminDataService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final CartRepository cartRepository;
+    private final StockAlertSettingsRepository stockAlertSettingsRepository;
 
     public SuperAdminDataService(MarketplaceStoreRepository storeRepository,
                                  ProductRepository productRepository,
                                  OrderRepository orderRepository,
                                  UserRepository userRepository,
                                  PasswordEncoder passwordEncoder,
-                                 CartRepository cartRepository) {
+                                 CartRepository cartRepository,
+                                 StockAlertSettingsRepository stockAlertSettingsRepository) {
         this.storeRepository = storeRepository;
         this.productRepository = productRepository;
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.cartRepository = cartRepository;
+        this.stockAlertSettingsRepository = stockAlertSettingsRepository;
     }
 
     @Transactional(readOnly = true)
@@ -82,10 +87,15 @@ public class SuperAdminDataService {
                 .limit(8)
                 .toList();
 
+        int stockAlertThreshold = stockAlertSettingsRepository.findById(StockAlertSettings.SETTINGS_ID)
+                .map(StockAlertSettings::getDefaultThreshold)
+                .filter(value -> value != null && value >= 1)
+                .orElse(StockAlertSettings.DEFAULT_THRESHOLD);
         int inStock = (int) products.stream().filter(this::isVisibleListing)
-                .filter(product -> integer(product.getProQuantity()) > 5).count();
+                .filter(product -> integer(product.getProQuantity()) > stockAlertThreshold).count();
         int lowStock = (int) products.stream().filter(this::isVisibleListing)
-                .filter(product -> integer(product.getProQuantity()) > 0 && integer(product.getProQuantity()) <= 5).count();
+                .filter(product -> integer(product.getProQuantity()) > 0
+                        && integer(product.getProQuantity()) <= stockAlertThreshold).count();
         int outOfStock = (int) products.stream().filter(this::isVisibleListing)
                 .filter(product -> integer(product.getProQuantity()) == 0).count();
 

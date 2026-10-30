@@ -9,6 +9,7 @@ import org.example.repository.CardGameRepository;
 import org.example.repository.MarketplaceStoreRepository;
 import org.example.repository.OrderRepository;
 import org.example.repository.ProductRepository;
+import org.example.repository.StockAlertSettingsRepository;
 import org.example.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,13 +37,15 @@ class AdminDataServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private OrderNotificationService notificationService;
     @Mock private ProductDeletionService productDeletionService;
+    @Mock private StockAlertSettingsRepository stockAlertSettingsRepository;
 
     private AdminDataService adminDataService;
 
     @BeforeEach
     void setUp() {
         adminDataService = new AdminDataService(productRepository, orderRepository, storeRepository,
-                cardGameRepository, userRepository, notificationService, productDeletionService);
+                cardGameRepository, userRepository, notificationService, productDeletionService,
+                stockAlertSettingsRepository);
     }
 
     @Test

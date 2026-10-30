@@ -34,7 +34,6 @@ public class SecurityConfig {
     private final RateLimitFilter rateLimitFilter;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    // Inject ตัว RateLimitFilter เข้ามา
     public SecurityConfig(RateLimitFilter rateLimitFilter, JwtAuthenticationFilter jwtAuthenticationFilter) {
         this.rateLimitFilter = rateLimitFilter;
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
@@ -42,23 +41,22 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(); // ใช้สำหรับเข้ารหัสผ่าน
+        return new BCryptPasswordEncoder();
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        // Keep this list explicit. Spring does not treat a port wildcard written
-        // as ":*" consistently, which caused requests from the Kubernetes
-        // frontend port-forward (127.0.0.1:30080) to fail with "Invalid CORS request".
         config.setAllowedOrigins(List.of(
                 "http://localhost:5173",
                 "http://127.0.0.1:5173",
+                "http://localhost:5174", 
+                "http://127.0.0.1:5174",
                 "http://localhost:4173",
                 "http://127.0.0.1:4173",
                 "http://localhost:30080",
                 "http://127.0.0.1:30080"
-        )); // Vite dev/preview and local Kubernetes frontend port-forward
+        ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Authorization", "Content-Type", "Retry-After", "X-XSRF-TOKEN"));
@@ -104,14 +102,29 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/error"
                         ).permitAll()
-                        .requestMatchers("/api/auth", "/api/auth/**").permitAll() // เปิดให้เส้นทาง Auth เข้าได้อิสระ
+                        .requestMatchers("/api/auth", "/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/marketplace", "/api/marketplace/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/products", "/api/products/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
-                        .requestMatchers("/api/superadmin", "/api/superadmin/**").hasRole("SUPER_ADMIN")
-                        .requestMatchers("/api/admin", "/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
-                        .requestMatchers("/api/seller", "/api/seller/**").hasAnyRole("SELLER", "ADMIN", "SUPER_ADMIN")
-                        .anyRequest().authenticated() // เส้นทางอื่นต้องมี Token
+                        
+                        .requestMatchers("/api/admin/reports/**").hasAnyAuthority(
+                                "ADMIN", "ROLE_ADMIN", 
+                                "ADMIN_MASTER", "ROLE_ADMIN_MASTER", 
+                                "SUPER_ADMIN", "ROLE_SUPER_ADMIN"
+                        )
+                        
+                        .requestMatchers(HttpMethod.POST, "/api/products", "/api/products/**").hasAnyAuthority("ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/stock-alerts/settings").hasAnyAuthority("SELLER", "ROLE_SELLER", "ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/stock-alerts/settings").hasAnyAuthority("ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers("/api/stock-alerts", "/api/stock-alerts/**").hasAnyAuthority("SELLER", "ROLE_SELLER", "ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers("/api/superadmin", "/api/superadmin/**").hasAnyAuthority("SUPER_ADMIN", "ROLE_SUPER_ADMIN")
+                        
+                        .requestMatchers("/api/admin", "/api/admin/**").hasAnyAuthority(
+                                "ADMIN", "ROLE_ADMIN", 
+                                "ADMIN_MASTER", "ROLE_ADMIN_MASTER", 
+                                "SUPER_ADMIN", "ROLE_SUPER_ADMIN"
+                        )
+                        .requestMatchers("/api/seller", "/api/seller/**").hasAnyAuthority("SELLER", "ROLE_SELLER", "ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ROLE_SUPER_ADMIN")
+                        .anyRequest().authenticated()
                 );
 
         return http.build();
