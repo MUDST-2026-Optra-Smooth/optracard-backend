@@ -330,7 +330,14 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     ) {
         userRepository.findByEmail(email)
                 .filter(user -> "SELLER".equalsIgnoreCase(user.getRole()))
-                .ifPresent(user -> stores.put(slug, getOrCreateStore(user.getUaId(), name, slug, description)));
+                .ifPresent(user -> {
+                    MarketplaceStore store = getOrCreateStore(user.getUaId(), name, slug, description);
+                    // Do not seed listings into stores that are still pending or rejected.
+                    // Existing review status must remain authoritative.
+                    if ("APPROVED".equalsIgnoreCase(store.getStoreStatus())) {
+                        stores.put(slug, store);
+                    }
+                });
     }
 
     private void reassignLegacyShuffleHouseListings(MarketplaceStore rareFindsStore) {
@@ -353,7 +360,6 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     private MarketplaceStore getOrCreateStore(Integer sellerUserId, String name, String slug, String description) {
         return marketplaceStoreRepository.findByStoreSlug(slug).map(store -> {
             store.setSellerUserId(sellerUserId);
-            store.setStoreStatus("APPROVED");
             store.setStoreName(name);
             store.setStoreDescription(description);
             if (store.getProvince() == null) store.setProvince("Bangkok");
