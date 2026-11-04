@@ -21,7 +21,7 @@ final class CatalogSearchMatcher {
     }
 
     static String normalizeQuery(String text) {
-        return normalize(text).replace("โปเกมอน", "pokemon").replace("วันพีซ", "one piece");
+        return normalize(text).replace("โปเกม่อน", "pokemon").replace("โปเกมอน", "pokemon").replace("วันพีช", "one piece").replace("วันพีซ", "one piece");
     }
 
     static int score(String query, String name, String game, String type, String description, String store) {

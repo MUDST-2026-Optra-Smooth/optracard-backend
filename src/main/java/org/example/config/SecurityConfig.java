@@ -84,6 +84,7 @@ public class SecurityConfig {
                                 new AntPathRequestMatcher("/v3/api-docs/**"),
                                 new AntPathRequestMatcher("/swagger-ui/**"),
                                 new AntPathRequestMatcher("/swagger-ui.html"),
+                                new AntPathRequestMatcher("/actuator/**"),
                                 request -> {
                                     String authHeader = request.getHeader("Authorization");
                                     return authHeader != null && authHeader.startsWith("Bearer ");
@@ -100,6 +101,7 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
+                                "/actuator/**",
                                 "/error"
                         ).permitAll()
                         .requestMatchers("/api/auth", "/api/auth/**").permitAll()
