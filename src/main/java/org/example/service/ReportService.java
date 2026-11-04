@@ -1,6 +1,8 @@
 package org.example.service;
 
 import org.example.dto.WeeklyReportResponse; 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -16,6 +18,8 @@ import java.util.List;
 @Service
 public class ReportService {
 
+    private static final Logger log = LoggerFactory.getLogger(ReportService.class);
+
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -27,8 +31,8 @@ public class ReportService {
             String endStr = endDate.atTime(23, 59, 59).format(DATETIME_FORMATTER);
 
             Query query1 = entityManager.createNativeQuery(
-                "SELECT COALESCE(SUM(ord_total_price), 0), COUNT(ord_id) " +
-                "FROM orders " +
+                "SELECT COALESCE(SUM(o.ord_total_price), 0), COUNT(o.ord_id) " +
+                "FROM orders o " +
                 "WHERE o.ord_createdate BETWEEN CAST(:start AS TIMESTAMP) AND CAST(:end AS TIMESTAMP)"
             )
             .setParameter("start", startStr + " 00:00:00")
@@ -64,7 +68,7 @@ public class ReportService {
                 "FROM orderitems oi " +
                 "JOIN products p ON oi.pro_id = p.pro_id " +
                 "JOIN orders o ON oi.ord_id = o.ord_id " +
-                "WHERE o.ord_createdate BETWEEN CAST(:start AS TIMESTAMP) AND CAST(:end AS TIMESTAMP)" +
+                "WHERE o.ord_createdate BETWEEN CAST(:start AS TIMESTAMP) AND CAST(:end AS TIMESTAMP) " +
                 "GROUP BY p.pro_id, p.pro_name, p.pro_quantity " +
                 "ORDER BY qty DESC " +
                 "LIMIT 5"
@@ -111,7 +115,7 @@ public class ReportService {
             return new WeeklyReportResponse(revenue, cost, profit, totalOrders, itemsSold, topProducts);
 
         } catch (Exception e) {
-            e.printStackTrace();
+            log.warn("Failed to generate weekly report: {}", e.getMessage());
             return new WeeklyReportResponse(
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0L, 0L, new ArrayList<>()
             );

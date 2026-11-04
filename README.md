@@ -341,20 +341,25 @@ The application will start on port `8080`.
 
 ### Running Tests & Testing Architecture
 
-OptraCard adopts a robust, multi-tiered testing strategy comprising **Unit Tests** and **End-to-End Integration Tests**, verified by automated JaCoCo code coverage.
+OptraCard adopts an extensive, multi-tiered testing strategy comprising **Unit Tests** and **End-to-End Integration Tests** (50 test classes, 225 automated tests), verified by automated JaCoCo code coverage and CI/CD pipelines.
 
 #### 1. Unit Tests (`src/test/java/org/example/...`)
-- **Controller WebMvc Tests** (`@WebMvcTest` + MockMvc):
-  - Validates HTTP request routing, input validation, serialization/deserialization, and HTTP response codes in isolation with mocked service dependencies.
-  - Controllers tested: `AdminController`, `AdminDataController`, `AuthController`, `CartController`, `OrderController`, `ProductController`, `ProfileController`, `SellerController`, `StoreApplicationController`, `SuperAdminController`.
+- **Controller Layer Tests** (MockMvc / Unit):
+  - Validates HTTP request routing, input validation, serialization/deserialization, query parameter handling, and status codes in isolation with mocked service dependencies.
+  - Controllers tested: `AuthController`, `CartController`, `ProductController`, `OrderController`, `ProfileController`, `SellerController`, `AdminDataController`, `AdminStoreController`, `AdminMarketplaceController`, `SuperAdminDataController`, `MarketplaceCatalogController`, `MarketplaceStoreController`, `OrderNotificationController`, `ReportController`, `PromotionAdminController`, `StockAlertController`.
 - **Service Layer Tests** (`@ExtendWith(MockitoExtension.class)`):
-  - Validates business logic, state transitions, security boundary checks, and repository interactions using Mockito.
-  - Services tested: `AuthService`, `ProductService`, `ProductDeletionService`, `CartService`, `OrderService`, `OrderNotificationService`, `ProfileService`, `SellerService`, `AdminDataService`, `MarketplaceStoreService`, `SuperAdminDataService`.
-- **Security & Utility Tests**:
-  - Validates `JwtTokenUtil` (token signing, claims parsing, expiration, role mapping) and `RateLimitFilter` (token-bucket rate limiting algorithms).
+  - Validates core business logic, entity state transitions, stock decrement/replenishment, discount formulas, RBAC authorization, and repository interactions.
+  - Services tested: `AuthService`, `CartService`, `ProductService`, `ProductDeletionService`, `OrderService`, `OrderNotificationService`, `ProfileService`, `SellerService`, `AdminDataService`, `MarketplaceStoreService`, `SuperAdminDataService`, `PromotionService`, `StockAlertService`, `ReportService`, `ReorderService`, `CatalogProductSpecification`, `CatalogSearchMatcher`.
+- **Security & Configuration Tests**:
+  - `JwtAuthenticationFilterTest`: Validates Authorization header parsing, Bearer prefix extraction, role prefix normalizing, and security context establishment.
+  - `JwtUtilTest`: Validates cryptographic signing, claims parsing, role extraction, and token expiration validation.
+  - `RateLimitFilterTest`: Validates token-bucket rate limiting algorithms, OPTIONS/Swagger bypasses, IP isolation, and 429 Retry-After handling.
+  - `SecurityConfigTest`: Validates BCrypt password encoder settings, CORS allowed origins, allowed methods, exposed headers, and credentials flags.
+  - `LocalCatalogSeederTest` & `LegacyCardGameNormalizerTest`: Validates startup demo data seeding, order reconciliation, and deduplication of legacy card game labels.
+  - `OpenAPIConfigTest`: Validates OpenAPI 3.0 documentation metadata and Bearer security scheme definitions.
 
 #### 2. End-to-End Integration Tests (`src/test/java/org/example/integration/`)
-Integration tests run against a full Spring Boot application context (`@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)`), full Spring Security filter chains, and an in-memory **H2 Database** in PostgreSQL compatibility mode (`@ActiveProfiles("test")`). No external PostgreSQL installation is required.
+Integration tests run against a full Spring Boot application context (`@SpringBootTest`), full Spring Security filter chains, and an in-memory **H2 Database** in PostgreSQL compatibility mode (`@ActiveProfiles("test")`). No external PostgreSQL installation is required.
 
 - **`AuthIntegrationTest`**:
   - Full registration pipeline: persistence to database, BCrypt password hashing, and user role assignment.
@@ -371,11 +376,34 @@ Integration tests run against a full Spring Boot application context (`@SpringBo
 - **`CartIntegrationTest`**:
   - Complete cart lifecycle: adding items, fetching user cart, updating quantities, removing items, and clearing carts.
   - Cross-user security: prevents unauthorized access to another user's cart (`403 Forbidden`).
+- **`OrderIntegrationTest`**:
+  - Complete checkout lifecycle: cart checkout with inventory decrement and order creation.
+  - Order status retrieval, tracking numbers, and role-based order viewing boundaries.
+  - Stock validation: prevents checkout when order quantity exceeds available stock.
+- **`PromotionIntegrationTest`**:
+  - Promotion coupon creation, editing, previewing, and validation.
+  - Subtotal discount computation (percentage discounts, maximum discount caps, minimum order value thresholds).
+  - RBAC protection: non-admin users forbidden from creating or modifying promotions.
+- **`StoreManagementIntegrationTest`**:
+  - Merchant store onboarding application submission (`POST /api/stores/apply`).
+  - Duplicate store application prevention and initial `PENDING` status enforcement.
+  - Administrative review workflow (`PUT /api/admin/stores/{id}/review`): approval and rejection state transitions.
+- **`SecurityRbacIntegrationTest`**:
+  - Comprehensive RBAC matrix across `CUSTOMER`, `SELLER`, `ADMIN`, `ADMIN_MASTER`, and `SUPER_ADMIN`.
+  - Enforces least privilege: Customers cannot access seller or admin dashboards; Sellers cannot access admin operations; Admins cannot access super-admin staff creation.
+  - Expired and malformed JWT token rejection.
+  - Public endpoint whitelisting (`/api/products`, `/api/marketplace`, Swagger UI, Actuator) and CORS preflight handling.
+- **`SecurityHardeningIntegrationTest`**:
+  - SQL injection payload resilience (`' OR 1=1 --`, `'; DROP TABLE;`) on public search endpoints.
+  - Cross-Site Scripting (XSS) input filtering and sanitization across catalog parameters.
+  - Privilege escalation defense: prevents client payloads from overriding assigned `USER` roles during registration.
+  - Forged algorithm `none` and tampered cryptographic signature rejection.
+  - Negative and malformed entity ID handling (returning clean `404 Not Found` without 500 error leaks).
 
 #### Test Execution Commands
 
 ```bash
-# Run all tests (Unit + Integration tests)
+# Run all 225 tests (Unit + Integration tests)
 mvn test
 
 # Run only Unit Tests (excluding integration tests)
@@ -385,7 +413,7 @@ mvn test -Dtest="!*IntegrationTest"
 mvn test -Dtest="*IntegrationTest"
 
 # Run a specific test class
-mvn test -Dtest=AuthIntegrationTest
+mvn test -Dtest=SecurityHardeningIntegrationTest
 ```
 
 ---

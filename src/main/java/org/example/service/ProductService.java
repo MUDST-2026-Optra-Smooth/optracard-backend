@@ -9,6 +9,8 @@ import org.example.model.MarketplaceStore;
 import org.example.model.Product;
 import org.example.repository.MarketplaceStoreRepository;
 import org.example.repository.ProductRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,8 @@ import static org.example.service.CatalogProductSpecification.publicProduct;
 
 @Service
 public class ProductService {
+    private static final Logger log = LoggerFactory.getLogger(ProductService.class);
+
     private final ProductRepository productRepository;
     private final MarketplaceStoreRepository marketplaceStoreRepository;
 
@@ -96,10 +100,13 @@ public class ProductService {
     public List<CatalogProductResponse> searchProducts(String keyword) {
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
         if (normalizedKeyword.isEmpty()) {
+            log.info("Catalog search called with empty query, returning all products");
             return getAllProducts();
         }
 
-        return productRepository.findByIsActiveTrueOrderByProTypeAscProIdAsc()
+        String normalizedSearchTerm = CatalogSearchMatcher.normalizeQuery(normalizedKeyword);
+
+        List<CatalogProductResponse> results = productRepository.findByIsActiveTrueOrderByProTypeAscProIdAsc()
                 .stream()
                 .filter(this::isPublicCatalogProduct)
                 .map(product -> new ScoredProduct(product, searchScore(normalizedKeyword, product)))
@@ -108,6 +115,11 @@ public class ProductService {
                         .thenComparing(result -> result.product().getProId(), Comparator.reverseOrder()))
                 .map(result -> toCatalogResponse(result.product()))
                 .toList();
+
+        log.info("Tolerant catalog search executed: rawQuery='{}', normalizedQuery='{}', matchedCount={}",
+                keyword, normalizedSearchTerm, results.size());
+
+        return results;
     }
 
     @Transactional(readOnly = true)
