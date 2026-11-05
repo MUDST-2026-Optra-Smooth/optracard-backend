@@ -73,9 +73,12 @@ public class PromotionService {
 
     @Transactional(readOnly = true)
     public PromotionPreviewResponse preview(Integer userId, String promotionCode, double subtotal) {
-        AppliedPromotion promotion = calculate(findByCode(promotionCode), userId, subtotal);
-        return new PromotionPreviewResponse(promotion.code(), promotion.name(), money(subtotal),
-                promotion.discountAmount(), money(subtotal - promotion.discountAmount()));
+        Promotion promotion = findByCode(promotionCode);
+        AppliedPromotion applied = calculate(promotion, userId, subtotal);
+        return new PromotionPreviewResponse(applied.code(), applied.name(), money(subtotal),
+                applied.discountAmount(), money(subtotal - applied.discountAmount()),
+                promotion.getDiscountType(), promotion.getDiscountValue(), promotion.getMaximumDiscountAmount(),
+                promotion.getMinimumOrderAmount(), promotion.getPerUserLimit());
     }
 
     /** Locks and consumes a code. It must be called inside the checkout transaction. */

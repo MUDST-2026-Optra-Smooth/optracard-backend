@@ -95,6 +95,25 @@ class PromotionServiceTest {
     }
 
     @Test
+    void previewIncludesThePromotionRulesForTheBuyer() {
+        Promotion promotion = promotion("HALF50", "PERCENTAGE", 50d);
+        promotion.setPromotionId(8);
+        promotion.setMaximumDiscountAmount(100d);
+        promotion.setMinimumOrderAmount(500d);
+        promotion.setPerUserLimit(1);
+        when(promotionRepository.findByCodeIgnoreCase("HALF50")).thenReturn(Optional.of(promotion));
+        when(promotionRedemptionRepository.countByPromotionIdAndUserId(8, 7)).thenReturn(0L);
+
+        var preview = promotionService.preview(7, "half50", 500d);
+
+        assertEquals("PERCENTAGE", preview.discountType());
+        assertEquals(50d, preview.discountValue());
+        assertEquals(100d, preview.maximumDiscountAmount());
+        assertEquals(500d, preview.minimumOrderAmount());
+        assertEquals(1, preview.perUserLimit());
+    }
+
+    @Test
     void percentagePromotionCapsTheDiscountAndRecordsTheCustomerRedemption() {
         Promotion promotion = promotion("HALF", "PERCENTAGE", 50d);
         promotion.setPromotionId(8);

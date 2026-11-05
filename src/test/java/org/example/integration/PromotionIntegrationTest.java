@@ -164,7 +164,9 @@ class PromotionIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SAVE20"))
                 .andExpect(jsonPath("$.discountAmount").value(40.0))
-                .andExpect(jsonPath("$.discountedSubtotal").value(160.0));
+                .andExpect(jsonPath("$.discountedSubtotal").value(160.0))
+                .andExpect(jsonPath("$.discountType").value("PERCENTAGE"))
+                .andExpect(jsonPath("$.minimumOrderAmount").value(50.0));
 
         // 5. Admin deletes promotion
         mockMvc.perform(delete("/api/admin/promotions/" + promoId)
