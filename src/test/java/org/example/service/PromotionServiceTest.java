@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -141,6 +142,61 @@ class PromotionServiceTest {
 
         assertEquals(400, exception.getStatusCode().value());
         assertEquals("You have reached the per-customer limit for this promotion", exception.getReason());
+    }
+
+    @Test
+    void previewRejectsInactiveAndNotYetStartedPromotionsWithoutChangingUsage() {
+        Promotion inactive = promotion("PAUSED", "PERCENTAGE", 10d);
+        inactive.setActive(false);
+        when(promotionRepository.findByCodeIgnoreCase("PAUSED")).thenReturn(Optional.of(inactive));
+
+        ResponseStatusException inactiveException = assertThrows(ResponseStatusException.class,
+                () -> promotionService.preview(7, "paused", 500d));
+
+        assertEquals("This promotion is not active", inactiveException.getReason());
+        assertEquals(0, inactive.getUsageCount());
+
+        Promotion scheduled = promotion("SOON", "PERCENTAGE", 10d);
+        scheduled.setStartsAt(now().plusMinutes(1));
+        when(promotionRepository.findByCodeIgnoreCase("SOON")).thenReturn(Optional.of(scheduled));
+
+        ResponseStatusException scheduledException = assertThrows(ResponseStatusException.class,
+                () -> promotionService.preview(7, "soon", 500d));
+
+        assertEquals("This promotion has not started yet", scheduledException.getReason());
+        assertEquals(0, scheduled.getUsageCount());
+    }
+
+    @Test
+    void previewRejectsAReachedGlobalUsageLimitWithoutCreatingARedemption() {
+        Promotion promotion = promotion("FULL", "PERCENTAGE", 10d);
+        promotion.setUsageLimit(2);
+        promotion.setUsageCount(2);
+        when(promotionRepository.findByCodeIgnoreCase("FULL")).thenReturn(Optional.of(promotion));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> promotionService.preview(7, "full", 500d));
+
+        assertEquals("This promotion has reached its usage limit", exception.getReason());
+        verify(promotionRedemptionRepository, never()).save(any());
+    }
+
+    @Test
+    void createRejectsInvalidDiscountAndScheduleRules() {
+        when(promotionRepository.existsByCodeIgnoreCase("TOOMUCH")).thenReturn(false);
+
+        ResponseStatusException percentageException = assertThrows(ResponseStatusException.class, () ->
+                promotionService.createPromotion(new PromotionRequest("TOOMUCH", "Too much", "PERCENTAGE",
+                        101d, null, 0d, null, null, now().minusDays(1), now().plusDays(1), true)));
+
+        assertEquals("Percentage discount cannot exceed 100", percentageException.getReason());
+
+        when(promotionRepository.existsByCodeIgnoreCase("BADDATE")).thenReturn(false);
+        ResponseStatusException dateException = assertThrows(ResponseStatusException.class, () ->
+                promotionService.createPromotion(new PromotionRequest("BADDATE", "Bad date", "FIXED_AMOUNT",
+                        10d, null, 0d, null, null, now(), now(), true)));
+
+        assertEquals("Promotion end date must be after its start date", dateException.getReason());
     }
 
     private Promotion promotion(String code, String type, double value) {

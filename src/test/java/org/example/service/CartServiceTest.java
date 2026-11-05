@@ -83,6 +83,41 @@ class CartServiceTest {
     }
 
     @Test
+    void addItemRejectsInactiveOrUnapprovedMarketplaceProducts() {
+        product.setIsActive(false);
+        when(productRepository.findById(100)).thenReturn(Optional.of(product));
+
+        ResponseStatusException inactive = assertThrows(ResponseStatusException.class,
+                () -> cartService.addItemToCart(7, 100, 1));
+        assertEquals(HttpStatus.NOT_FOUND, inactive.getStatusCode());
+
+        product.setIsActive(true);
+        product.setListingSource("MARKETPLACE");
+        when(productRepository.findById(100)).thenReturn(Optional.of(product));
+
+        ResponseStatusException unpublished = assertThrows(ResponseStatusException.class,
+                () -> cartService.addItemToCart(7, 100, 1));
+        assertEquals(HttpStatus.NOT_FOUND, unpublished.getStatusCode());
+    }
+
+    @Test
+    void updateItemQuantityRejectsQuantityAboveCurrentStockAndLeavesCartUntouched() {
+        when(productRepository.findById(100)).thenReturn(Optional.of(product));
+        when(cartRepository.findByUserId(7)).thenReturn(Optional.of(cart));
+        CartItem item = new CartItem();
+        item.setProductId(100);
+        item.setQuantity(2);
+        item.setCart(cart);
+        cart.getItems().add(item);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> cartService.updateItemQuantity(7, 100, 6));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        assertEquals(2, item.getQuantity());
+    }
+
+    @Test
     void updateItemQuantity_updatesExistingItem() {
         when(productRepository.findById(100)).thenReturn(Optional.of(product));
         when(cartRepository.findByUserId(7)).thenReturn(Optional.of(cart));
