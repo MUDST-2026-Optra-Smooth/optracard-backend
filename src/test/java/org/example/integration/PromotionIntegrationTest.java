@@ -1,6 +1,7 @@
 package org.example.integration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.example.dto.CreateOrderRequest;
 import org.example.dto.PromotionCodeRequest;
 import org.example.dto.PromotionRequest;
 import org.example.model.CardGame;
@@ -46,6 +47,9 @@ class PromotionIntegrationTest {
     private PromotionRepository promotionRepository;
 
     @Autowired
+    private PromotionRedemptionRepository promotionRedemptionRepository;
+
+    @Autowired
     private ProductRepository productRepository;
 
     @Autowired
@@ -55,6 +59,12 @@ class PromotionIntegrationTest {
     private CartRepository cartRepository;
 
     @Autowired
+    private OrderItemRepository orderItemRepository;
+
+    @Autowired
+    private OrderRepository orderRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Autowired
@@ -62,12 +72,16 @@ class PromotionIntegrationTest {
 
     private User admin;
     private User customer;
+    private User anotherCustomer;
     private String adminToken;
     private String customerToken;
     private Product testProduct;
 
     @BeforeEach
     void setUp() {
+        promotionRedemptionRepository.deleteAll();
+        orderItemRepository.deleteAll();
+        orderRepository.deleteAll();
         promotionRepository.deleteAll();
         cartRepository.deleteAll();
         productRepository.deleteAll();
@@ -87,6 +101,13 @@ class PromotionIntegrationTest {
         customer.setPassword(passwordEncoder.encode("password"));
         customer.setRole("USER");
         customer = userRepository.save(customer);
+
+        anotherCustomer = new User();
+        anotherCustomer.setUsername("cust2");
+        anotherCustomer.setEmail("cust2@optracard.test");
+        anotherCustomer.setPassword(passwordEncoder.encode("password"));
+        anotherCustomer.setRole("USER");
+        anotherCustomer = userRepository.save(anotherCustomer);
 
         adminToken = "Bearer " + jwtUtil.generateToken(admin.getEmail(), admin.getRole());
         customerToken = "Bearer " + jwtUtil.generateToken(customer.getEmail(), customer.getRole());
@@ -178,6 +199,68 @@ class PromotionIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("A capped once-per-customer promotion previews without consuming, then enforces redemption at checkout")
+    void cappedPromotion_isConsumedOncePerCustomerAtCheckout() throws Exception {
+        PromotionRequest promotion = new PromotionRequest(
+                "HALF50", "Half price up to 100", "PERCENTAGE", 50d, 100d, 500d, null, 1,
+                LocalDateTime.now().minusDays(1), LocalDateTime.now().plusDays(1), true
+        );
+        mockMvc.perform(post("/api/admin/promotions")
+                        .header(HttpHeaders.AUTHORIZATION, adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(promotion)))
+                .andExpect(status().isCreated());
+
+        addToCart(customer, 3);
+        PromotionCodeRequest code = new PromotionCodeRequest("HALF50");
+        mockMvc.perform(post("/api/orders/promotion-preview")
+                        .header(HttpHeaders.AUTHORIZATION, customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(code)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subtotal").value(600d))
+                .andExpect(jsonPath("$.discountAmount").value(100d))
+                .andExpect(jsonPath("$.perUserLimit").value(1));
+
+        CreateOrderRequest checkout = new CreateOrderRequest(
+                "Customer One", "0812345678", "Bangkok", "standard", "qr", "HALF50"
+        );
+        mockMvc.perform(post("/api/orders")
+                        .header(HttpHeaders.AUTHORIZATION, customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkout)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orders[0].discountCode").value("HALF50"))
+                .andExpect(jsonPath("$.orders[0].discountAmount").value(100d));
+
+        addToCart(customer, 1);
+        mockMvc.perform(post("/api/orders")
+                        .header(HttpHeaders.AUTHORIZATION, customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkout)))
+                .andExpect(status().isBadRequest());
+
+        String anotherCustomerToken = "Bearer " + jwtUtil.generateToken(anotherCustomer.getEmail(), anotherCustomer.getRole());
+        addToCart(anotherCustomer, 3);
+        mockMvc.perform(post("/api/orders")
+                        .header(HttpHeaders.AUTHORIZATION, anotherCustomerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(checkout)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orders[0].discountAmount").value(100d));
+    }
+
+    private void addToCart(User user, int quantity) throws Exception {
+        String token = "Bearer " + jwtUtil.generateToken(user.getEmail(), user.getRole());
+        mockMvc.perform(post("/api/cart/add")
+                        .header(HttpHeaders.AUTHORIZATION, token)
+                        .param("userId", user.getUaId().toString())
+                        .param("productId", testProduct.getProId().toString())
+                        .param("quantity", Integer.toString(quantity)))
+                .andExpect(status().isOk());
     }
 }
 
