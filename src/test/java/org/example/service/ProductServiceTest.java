@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.util.List;
 import java.util.Optional;
@@ -19,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
 class ProductServiceTest {
@@ -89,6 +92,39 @@ class ProductServiceTest {
         when(productRepository.findByIsActiveTrueOrderByProTypeAscProIdAsc()).thenReturn(List.of(fuzzy, hidden, exact));
 
         assertEquals(List.of(1, 2), productService.searchProducts("pokemon").stream()
+                .map(CatalogProductResponse::id).toList());
+    }
+
+    @Test
+    void catalog_usesTolerantMatchingForTyposAndThaiAliases() {
+        CardGame pokemon = new CardGame();
+        pokemon.setGameName("Pokemon");
+
+        Product matched = new Product();
+        matched.setProId(1);
+        matched.setProName("Pokemon Card");
+        matched.setProType("Single");
+        matched.setCardGame(pokemon);
+        matched.setProPriceOfSell(100.0);
+        matched.setProQuantity(1);
+        matched.setIsActive(true);
+        matched.setListingSource("OFFICIAL");
+
+        Product unrelated = new Product();
+        unrelated.setProId(2);
+        unrelated.setProName("Blue-Eyes White Dragon");
+        unrelated.setProType("Single");
+        unrelated.setIsActive(true);
+        unrelated.setListingSource("OFFICIAL");
+
+        when(productRepository.findAll(any(Specification.class), any(Sort.class)))
+                .thenReturn(List.of(matched, unrelated));
+
+        assertEquals(List.of(1), productService.catalog("pokamon", null, null, null, null,
+                        null, null, null, "newest", 0, 24).items().stream()
+                .map(CatalogProductResponse::id).toList());
+        assertEquals(List.of(1), productService.catalog("โปเกมอน", null, null, null, null,
+                        null, null, null, "newest", 0, 24).items().stream()
                 .map(CatalogProductResponse::id).toList());
     }
 
