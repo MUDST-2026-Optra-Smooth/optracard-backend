@@ -69,6 +69,10 @@ jobs:
     needs: build-and-test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Windows, X64]
+    env:
+      BACKEND_API_URL: ${{ secrets.BACKEND_API_URL }}
+      E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
     defaults:
       run:
         shell: powershell -ExecutionPolicy Bypass -Command "{0}"
@@ -113,10 +117,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Run deployed read-only API smoke checks
-        env:
-          BACKEND_API_URL: ${{ secrets.BACKEND_API_URL }}
-          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
-          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
         if: env.BACKEND_API_URL != ''
         run: |
           .\scripts\deployed-api-smoke.ps1 -ApiBaseUrl $env:BACKEND_API_URL -Email $env:E2E_EMAIL -Password $env:E2E_PASSWORD
