@@ -125,6 +125,26 @@ public class ProductService {
     @Transactional(readOnly = true)
     public CatalogPageResponse catalog(String q,String type,String game,Double min,Double max,String language,String source,Integer storeId,String sort,int page,int pageSize) {
         Sort ordering=switch(sort){case "price_asc"->Sort.by("proPriceOfSell").ascending().and(Sort.by("proId").descending());case "price_desc"->Sort.by("proPriceOfSell").descending().and(Sort.by("proId").descending());case "name_asc"->Sort.by("proName").ascending().and(Sort.by("proId").descending());default->Sort.by("proId").descending();};
+        if (q != null && !q.isBlank()) {
+            List<ScoredProduct> matches = productRepository.findAll(
+                            publicProduct("", type, game, min, max, language, source, storeId), ordering)
+                    .stream()
+                    .map(product -> new ScoredProduct(product, searchScore(q, product)))
+                    .filter(result -> result.score() != CatalogSearchMatcher.NO_MATCH)
+                    .sorted(Comparator.comparingInt(ScoredProduct::score)
+                            .thenComparing(ScoredProduct::product, catalogProductComparator(sort)))
+                    .toList();
+
+            long offset = (long) page * pageSize;
+            List<CatalogProductResponse> items = offset >= matches.size()
+                    ? List.of()
+                    : matches.subList((int) offset, (int) Math.min(offset + pageSize, matches.size()))
+                    .stream().map(result -> toCatalogResponse(result.product())).toList();
+            int totalPages = (int) Math.ceil((double) matches.size() / pageSize);
+
+            log.info("Tolerant paged catalog search executed: rawQuery='{}', matchedCount={}", q, matches.size());
+            return new CatalogPageResponse(items, page, pageSize, matches.size(), totalPages, sort);
+        }
         var result=productRepository.findAll(publicProduct(q,type,game,min,max,language,source,storeId),PageRequest.of(page,pageSize,ordering));
         return new CatalogPageResponse(result.getContent().stream().map(this::toCatalogResponse).toList(),result.getNumber(),result.getSize(),result.getTotalElements(),result.getTotalPages(),sort);
     }
@@ -151,6 +171,18 @@ public class ProductService {
                 : "Optracard Official Store";
         return CatalogSearchMatcher.score(query, product.getProName(), game, product.getProType(),
                 product.getProDescription(), store);
+    }
+
+    private Comparator<Product> catalogProductComparator(String sort) {
+        return switch (sort) {
+            case "price_asc" -> Comparator.comparing(Product::getProPriceOfSell,
+                    Comparator.nullsLast(Comparator.naturalOrder())).thenComparing(Product::getProId, Comparator.reverseOrder());
+            case "price_desc" -> Comparator.comparing(Product::getProPriceOfSell,
+                    Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(Product::getProId, Comparator.reverseOrder());
+            case "name_asc" -> Comparator.comparing(Product::getProName,
+                    Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)).thenComparing(Product::getProId, Comparator.reverseOrder());
+            default -> Comparator.comparing(Product::getProId, Comparator.reverseOrder());
+        };
     }
 
     public Product createProduct(Product product) {

@@ -110,7 +110,7 @@ class PromotionIntegrationTest {
     @DisplayName("Non-admin user cannot create promotions")
     void customer_createPromotion_forbidden() throws Exception {
         PromotionRequest request = new PromotionRequest(
-                "DISCOUNT10", "10% Off", "PERCENTAGE", 10.0, 50.0, 100,
+                "DISCOUNT10", "10% Off", "PERCENTAGE", 10.0, null, 50.0, 100, null,
                 LocalDateTime.now().minusDays(1), LocalDateTime.now().plusDays(10), true
         );
 
@@ -126,7 +126,7 @@ class PromotionIntegrationTest {
     void promotionLifecycle_endToEnd() throws Exception {
         // 1. Admin creates promotion
         PromotionRequest promoReq = new PromotionRequest(
-                "SAVE20", "Save 20%", "PERCENTAGE", 20.0, 50.0, 100,
+                "SAVE20", "Save 20%", "PERCENTAGE", 20.0, null, 50.0, 100, null,
                 LocalDateTime.now().minusDays(1), LocalDateTime.now().plusDays(10), true
         );
 
@@ -164,7 +164,9 @@ class PromotionIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("SAVE20"))
                 .andExpect(jsonPath("$.discountAmount").value(40.0))
-                .andExpect(jsonPath("$.discountedSubtotal").value(160.0));
+                .andExpect(jsonPath("$.discountedSubtotal").value(160.0))
+                .andExpect(jsonPath("$.discountType").value("PERCENTAGE"))
+                .andExpect(jsonPath("$.minimumOrderAmount").value(50.0));
 
         // 5. Admin deletes promotion
         mockMvc.perform(delete("/api/admin/promotions/" + promoId)

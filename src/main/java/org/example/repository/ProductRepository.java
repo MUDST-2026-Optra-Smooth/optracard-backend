@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Repository;
 import org.springframework.data.jpa.repository.Query;
@@ -20,6 +21,10 @@ public interface ProductRepository extends JpaRepository<Product, Integer>, JpaS
     @Override
     @EntityGraph(attributePaths = {"cardGame", "store"})
     Page<Product> findAll(Specification<Product> specification, Pageable pageable);
+
+    @Override
+    @EntityGraph(attributePaths = {"cardGame", "store"})
+    List<Product> findAll(Specification<Product> specification, Sort sort);
 
     @EntityGraph(attributePaths = {"cardGame", "store"})
     List<Product> findByIsActiveTrueOrderByProTypeAscProIdAsc();

@@ -131,7 +131,7 @@ class OrderServiceTest {
 
     @Test
     void checkoutCalculatesPromotionOnTheServerAndSnapshotsItAcrossSellerOrders() {
-        when(promotionService.applyForCheckout("SAVE10", 300d))
+        when(promotionService.applyForCheckout("SAVE10", 7, 300d))
                 .thenReturn(new PromotionService.AppliedPromotion("SAVE10", "Ten percent off", 30d));
 
         CheckoutResponse result = orderService.placeOrder(7,
@@ -149,7 +149,7 @@ class OrderServiceTest {
         assertEquals(200d, marketplaceOrder.getSubtotal());
         assertEquals(20d, marketplaceOrder.getDiscountAmount());
         assertEquals(230d, marketplaceOrder.getTotalPrice());
-        verify(promotionService).applyForCheckout("SAVE10", 300d);
+        verify(promotionService).applyForCheckout("SAVE10", 7, 300d);
     }
 
     private Product product(Integer id, String name, Double price, String source, MarketplaceStore store) {

@@ -5,5 +5,10 @@ public record PromotionPreviewResponse(
         String name,
         Double subtotal,
         Double discountAmount,
-        Double discountedSubtotal
+        Double discountedSubtotal,
+        String discountType,
+        Double discountValue,
+        Double maximumDiscountAmount,
+        Double minimumOrderAmount,
+        Integer perUserLimit
 ) {}

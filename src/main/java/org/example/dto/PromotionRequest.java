@@ -7,8 +7,10 @@ public record PromotionRequest(
         String name,
         String discountType,
         Double discountValue,
+        Double maximumDiscountAmount,
         Double minimumOrderAmount,
         Integer usageLimit,
+        Integer perUserLimit,
         LocalDateTime startsAt,
         LocalDateTime endsAt,
         Boolean active

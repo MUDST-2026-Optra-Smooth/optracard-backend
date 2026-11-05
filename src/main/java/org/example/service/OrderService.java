@@ -87,7 +87,7 @@ public class OrderService {
         double cartSubtotal = itemsBySeller.values().stream().flatMap(List::stream)
                 .mapToDouble(line -> priceOf(line.product()) * line.quantity()).sum();
         PromotionService.AppliedPromotion promotion = hasText(request.promotionCode())
-                ? promotionService.applyForCheckout(request.promotionCode(), cartSubtotal)
+                ? promotionService.applyForCheckout(request.promotionCode(), userId, cartSubtotal)
                 : PromotionService.AppliedPromotion.none();
 
         List<OrderResponse> placedOrders = new ArrayList<>();
@@ -153,7 +153,7 @@ public class OrderService {
             }
             subtotal += priceOf(product) * quantity;
         }
-        return promotionService.preview(request == null ? null : request.code(), subtotal);
+        return promotionService.preview(userId, request == null ? null : request.code(), subtotal);
     }
 
     @Transactional(readOnly = true)

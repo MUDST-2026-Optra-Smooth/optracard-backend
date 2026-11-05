@@ -4,7 +4,9 @@ import org.example.dto.PromotionPreviewResponse;
 import org.example.dto.PromotionRequest;
 import org.example.dto.PromotionResponse;
 import org.example.model.Promotion;
+import org.example.model.PromotionRedemption;
 import org.example.repository.PromotionRepository;
+import org.example.repository.PromotionRedemptionRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,9 +26,12 @@ public class PromotionService {
     private static final ZoneId PROMOTION_TIME_ZONE = ZoneId.of("Asia/Bangkok");
 
     private final PromotionRepository promotionRepository;
+    private final PromotionRedemptionRepository promotionRedemptionRepository;
 
-    public PromotionService(PromotionRepository promotionRepository) {
+    public PromotionService(PromotionRepository promotionRepository,
+                            PromotionRedemptionRepository promotionRedemptionRepository) {
         this.promotionRepository = promotionRepository;
+        this.promotionRedemptionRepository = promotionRedemptionRepository;
     }
 
     @Transactional(readOnly = true)
@@ -67,20 +72,27 @@ public class PromotionService {
     }
 
     @Transactional(readOnly = true)
-    public PromotionPreviewResponse preview(String promotionCode, double subtotal) {
-        AppliedPromotion promotion = calculate(findByCode(promotionCode), subtotal);
-        return new PromotionPreviewResponse(promotion.code(), promotion.name(), money(subtotal),
-                promotion.discountAmount(), money(subtotal - promotion.discountAmount()));
+    public PromotionPreviewResponse preview(Integer userId, String promotionCode, double subtotal) {
+        Promotion promotion = findByCode(promotionCode);
+        AppliedPromotion applied = calculate(promotion, userId, subtotal);
+        return new PromotionPreviewResponse(applied.code(), applied.name(), money(subtotal),
+                applied.discountAmount(), money(subtotal - applied.discountAmount()),
+                promotion.getDiscountType(), promotion.getDiscountValue(), promotion.getMaximumDiscountAmount(),
+                promotion.getMinimumOrderAmount(), promotion.getPerUserLimit());
     }
 
     /** Locks and consumes a code. It must be called inside the checkout transaction. */
     @Transactional
-    public AppliedPromotion applyForCheckout(String promotionCode, double subtotal) {
+    public AppliedPromotion applyForCheckout(String promotionCode, Integer userId, double subtotal) {
         if (isBlank(promotionCode)) return AppliedPromotion.none();
         Promotion promotion = promotionRepository.findByCodeForUpdate(normalizeCode(promotionCode))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Promotion code is invalid"));
-        AppliedPromotion applied = calculate(promotion, subtotal);
+        AppliedPromotion applied = calculate(promotion, userId, subtotal);
         promotion.setUsageCount((promotion.getUsageCount() == null ? 0 : promotion.getUsageCount()) + 1);
+        PromotionRedemption redemption = new PromotionRedemption();
+        redemption.setPromotionId(promotion.getPromotionId());
+        redemption.setUserId(userId);
+        promotionRedemptionRepository.save(redemption);
         return applied;
     }
 
@@ -92,7 +104,7 @@ public class PromotionService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Promotion code is invalid"));
     }
 
-    private AppliedPromotion calculate(Promotion promotion, double subtotal) {
+    private AppliedPromotion calculate(Promotion promotion, Integer userId, double subtotal) {
         if (!Boolean.TRUE.equals(promotion.getActive())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This promotion is not active");
         }
@@ -110,6 +122,12 @@ public class PromotionService {
         if (promotion.getUsageLimit() != null && used >= promotion.getUsageLimit()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This promotion has reached its usage limit");
         }
+        if (promotion.getPerUserLimit() != null
+                && promotionRedemptionRepository.countByPromotionIdAndUserId(promotion.getPromotionId(), userId)
+                >= promotion.getPerUserLimit()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "You have reached the per-customer limit for this promotion");
+        }
         double minimum = number(promotion.getMinimumOrderAmount());
         if (subtotal < minimum) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -119,6 +137,9 @@ public class PromotionService {
         double discount = PERCENTAGE.equals(promotion.getDiscountType())
                 ? subtotal * number(promotion.getDiscountValue()) / 100d
                 : number(promotion.getDiscountValue());
+        if (PERCENTAGE.equals(promotion.getDiscountType()) && promotion.getMaximumDiscountAmount() != null) {
+            discount = Math.min(discount, number(promotion.getMaximumDiscountAmount()));
+        }
         return new AppliedPromotion(promotion.getCode(), promotion.getName(), money(Math.min(subtotal, discount)));
     }
 
@@ -132,6 +153,8 @@ public class PromotionService {
         String name = required(request.name(), "Promotion name is required");
         String type = normalizeType(request.discountType());
         double value = requiredNonNegative(request.discountValue(), "Discount value is required");
+        Double maximum = request.maximumDiscountAmount() == null ? null
+                : requiredNonNegative(request.maximumDiscountAmount(), "Maximum discount must be zero or more");
         double minimum = request.minimumOrderAmount() == null ? 0d
                 : requiredNonNegative(request.minimumOrderAmount(), "Minimum order amount must be zero or more");
         if (value <= 0d) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Discount value must be greater than zero");
@@ -140,6 +163,9 @@ public class PromotionService {
         }
         if (request.usageLimit() != null && request.usageLimit() < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Usage limit must be at least 1");
+        }
+        if (request.perUserLimit() != null && request.perUserLimit() < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Per-customer limit must be at least 1");
         }
         if (request.startsAt() == null || request.endsAt() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Promotion start and end dates are required");
@@ -151,8 +177,10 @@ public class PromotionService {
         promotion.setName(name);
         promotion.setDiscountType(type);
         promotion.setDiscountValue(money(value));
+        promotion.setMaximumDiscountAmount(PERCENTAGE.equals(type) && maximum != null ? money(maximum) : null);
         promotion.setMinimumOrderAmount(money(minimum));
         promotion.setUsageLimit(request.usageLimit());
+        promotion.setPerUserLimit(request.perUserLimit());
         promotion.setStartsAt(request.startsAt());
         promotion.setEndsAt(request.endsAt());
         promotion.setActive(request.active() == null || request.active());
@@ -161,8 +189,9 @@ public class PromotionService {
 
     private PromotionResponse toResponse(Promotion promotion) {
         return new PromotionResponse(promotion.getPromotionId(), promotion.getCode(), promotion.getName(),
-                promotion.getDiscountType(), promotion.getDiscountValue(), promotion.getMinimumOrderAmount(),
-                promotion.getUsageLimit(), promotion.getUsageCount(), promotion.getStartsAt(), promotion.getEndsAt(),
+                promotion.getDiscountType(), promotion.getDiscountValue(), promotion.getMaximumDiscountAmount(),
+                promotion.getMinimumOrderAmount(), promotion.getUsageLimit(), promotion.getPerUserLimit(),
+                promotion.getUsageCount(), promotion.getStartsAt(), promotion.getEndsAt(),
                 promotion.getActive());
     }
 
