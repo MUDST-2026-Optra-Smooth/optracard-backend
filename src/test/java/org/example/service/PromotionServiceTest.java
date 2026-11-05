@@ -3,6 +3,7 @@ package org.example.service;
 import org.example.dto.PromotionRequest;
 import org.example.model.Promotion;
 import org.example.repository.PromotionRepository;
+import org.example.repository.PromotionRedemptionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,11 +26,14 @@ class PromotionServiceTest {
     @Mock
     private PromotionRepository promotionRepository;
 
+    @Mock
+    private PromotionRedemptionRepository promotionRedemptionRepository;
+
     private PromotionService promotionService;
 
     @BeforeEach
     void setUp() {
-        promotionService = new PromotionService(promotionRepository);
+        promotionService = new PromotionService(promotionRepository, promotionRedemptionRepository);
     }
 
     @Test
@@ -44,10 +48,12 @@ class PromotionServiceTest {
         LocalDateTime endsAt = now().plusDays(1);
 
         var result = promotionService.createPromotion(new PromotionRequest("save10", "Welcome discount",
-                "PERCENTAGE", 10d, 100d, 25, startsAt, endsAt, true));
+                "PERCENTAGE", 10d, 100d, 100d, 25, 1, startsAt, endsAt, true));
 
         assertEquals("SAVE10", result.code());
         assertEquals("PERCENTAGE", result.discountType());
+        assertEquals(100d, result.maximumDiscountAmount());
+        assertEquals(1, result.perUserLimit());
         assertEquals(0, result.usageCount());
     }
 
@@ -58,7 +64,7 @@ class PromotionServiceTest {
         when(promotionRepository.findByCodeForUpdate("SAVE10")).thenReturn(Optional.of(promotion));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> promotionService.applyForCheckout("save10", 500d));
+                () -> promotionService.applyForCheckout("save10", 7, 500d));
 
         assertEquals(400, exception.getStatusCode().value());
         assertEquals(0, promotion.getUsageCount());
@@ -69,7 +75,7 @@ class PromotionServiceTest {
         Promotion promotion = promotion("SAVE500", "FIXED_AMOUNT", 500d);
         when(promotionRepository.findByCodeForUpdate("SAVE500")).thenReturn(Optional.of(promotion));
 
-        var result = promotionService.applyForCheckout("save500", 125d);
+        var result = promotionService.applyForCheckout("save500", 7, 125d);
 
         assertEquals(125d, result.discountAmount());
         assertEquals(1, promotion.getUsageCount());
@@ -83,9 +89,39 @@ class PromotionServiceTest {
         when(promotionRepository.findByCodeIgnoreCase("SAVE10")).thenReturn(Optional.of(promotion));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> promotionService.preview("SAVE10", 499d));
+                () -> promotionService.preview(7, "SAVE10", 499d));
 
         assertEquals(400, exception.getStatusCode().value());
+    }
+
+    @Test
+    void percentagePromotionCapsTheDiscountAndRecordsTheCustomerRedemption() {
+        Promotion promotion = promotion("HALF", "PERCENTAGE", 50d);
+        promotion.setPromotionId(8);
+        promotion.setMaximumDiscountAmount(100d);
+        promotion.setPerUserLimit(1);
+        when(promotionRepository.findByCodeForUpdate("HALF")).thenReturn(Optional.of(promotion));
+        when(promotionRedemptionRepository.countByPromotionIdAndUserId(8, 7)).thenReturn(0L);
+
+        var result = promotionService.applyForCheckout("half", 7, 500d);
+
+        assertEquals(100d, result.discountAmount());
+        verify(promotionRedemptionRepository).save(any());
+    }
+
+    @Test
+    void previewRejectsAPromotionAlreadyUsedByThisCustomer() {
+        Promotion promotion = promotion("ONCE", "PERCENTAGE", 10d);
+        promotion.setPromotionId(8);
+        promotion.setPerUserLimit(1);
+        when(promotionRepository.findByCodeIgnoreCase("ONCE")).thenReturn(Optional.of(promotion));
+        when(promotionRedemptionRepository.countByPromotionIdAndUserId(8, 7)).thenReturn(1L);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> promotionService.preview(7, "ONCE", 500d));
+
+        assertEquals(400, exception.getStatusCode().value());
+        assertEquals("You have reached the per-customer limit for this promotion", exception.getReason());
     }
 
     private Promotion promotion(String code, String type, double value) {

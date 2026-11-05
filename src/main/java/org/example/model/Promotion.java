@@ -33,11 +33,19 @@ public class Promotion {
     @Column(name = "promo_discount_value", nullable = false)
     private Double discountValue;
 
+    /** Optional cap for a percentage discount, for example 50% up to ฿100. */
+    @Column(name = "promo_maximum_discount")
+    private Double maximumDiscountAmount;
+
     @Column(name = "promo_minimum_order", nullable = false)
     private Double minimumOrderAmount = 0d;
 
     @Column(name = "promo_usage_limit")
     private Integer usageLimit;
+
+    /** Optional number of times the same customer may redeem this promotion. */
+    @Column(name = "promo_per_user_limit")
+    private Integer perUserLimit;
 
     @Column(name = "promo_usage_count", nullable = false)
     private Integer usageCount = 0;
