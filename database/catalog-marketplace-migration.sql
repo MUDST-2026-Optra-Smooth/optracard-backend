@@ -10,6 +10,14 @@ CREATE TABLE IF NOT EXISTS marketplace_stores (
     store_description TEXT
 );
 
+CREATE INDEX IF NOT EXISTS idx_products_catalog_active ON products (is_active);
+CREATE INDEX IF NOT EXISTS idx_products_catalog_source ON products (pro_listing_source, pro_approval_status);
+CREATE INDEX IF NOT EXISTS idx_products_catalog_game ON products (game_id);
+CREATE INDEX IF NOT EXISTS idx_products_catalog_store ON products (store_id);
+CREATE INDEX IF NOT EXISTS idx_products_catalog_price ON products (pro_priceofsell);
+CREATE INDEX IF NOT EXISTS idx_products_catalog_type ON products (pro_type);
+CREATE INDEX IF NOT EXISTS idx_products_catalog_language ON products (pro_language);
+
 -- Seller application details collected by the My Shop wizard. These columns
 -- keep an application in PENDING status until an administrator reviews it.
 ALTER TABLE marketplace_stores ADD COLUMN IF NOT EXISTS physical_store BOOLEAN NOT NULL DEFAULT FALSE;
@@ -48,6 +56,39 @@ BEGIN
     END IF;
 END $$;
 
+CREATE TABLE IF NOT EXISTS stock_alert_settings (
+    setting_id INT PRIMARY KEY,
+    default_threshold INT NOT NULL DEFAULT 5 CHECK (default_threshold >= 1)
+);
+
+INSERT INTO stock_alert_settings (setting_id, default_threshold)
+VALUES (1, 5)
+ON CONFLICT (setting_id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS stock_alert_store_settings (
+    store_id INT PRIMARY KEY REFERENCES marketplace_stores(store_id) ON DELETE CASCADE,
+    default_threshold INT NOT NULL DEFAULT 5 CHECK (default_threshold >= 1)
+);
+
+CREATE TABLE IF NOT EXISTS stock_alerts (
+    stock_alert_id SERIAL PRIMARY KEY,
+    pro_id INT NOT NULL UNIQUE REFERENCES products(pro_id) ON DELETE CASCADE,
+    alert_type VARCHAR(30) NOT NULL CHECK (alert_type IN ('LOW_STOCK', 'OUT_OF_STOCK')),
+    current_stock INT NOT NULL,
+    threshold INT NOT NULL CHECK (threshold >= 1),
+    activated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS stock_alert_reads (
+    stock_alert_read_id SERIAL PRIMARY KEY,
+    stock_alert_id INT NOT NULL REFERENCES stock_alerts(stock_alert_id) ON DELETE CASCADE,
+    ua_id INT NOT NULL REFERENCES users_admins(ua_id) ON DELETE CASCADE,
+    read_at TIMESTAMP NOT NULL,
+    CONSTRAINT uq_stock_alert_read_user UNIQUE (stock_alert_id, ua_id)
+);
+
 -- Checkout metadata. Card numbers are intentionally not stored; a real
 -- payment provider should tokenize them and only return a payment reference.
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_recipient_name VARCHAR(255);
@@ -60,10 +101,29 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_payment_status VARCHAR(30) NOT N
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_store_id INT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_store_name VARCHAR(255);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_source VARCHAR(20) NOT NULL DEFAULT 'OFFICIAL';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_subtotal DECIMAL(10,2);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_promotion_code VARCHAR(50);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_promotion_name VARCHAR(255);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS ord_discount_amount DECIMAL(10,2) NOT NULL DEFAULT 0;
 UPDATE orders SET ord_payment_status = 'PENDING' WHERE ord_payment_status IS NULL;
 UPDATE orders SET ord_source = 'OFFICIAL' WHERE ord_source IS NULL;
 ALTER TABLE orders ALTER COLUMN ord_payment_status SET DEFAULT 'PENDING', ALTER COLUMN ord_payment_status SET NOT NULL;
 ALTER TABLE orders ALTER COLUMN ord_source SET DEFAULT 'OFFICIAL', ALTER COLUMN ord_source SET NOT NULL;
+
+CREATE TABLE IF NOT EXISTS promotions (
+    promo_id SERIAL PRIMARY KEY,
+    promo_code VARCHAR(50) NOT NULL UNIQUE,
+    promo_name VARCHAR(255) NOT NULL,
+    promo_discount_type VARCHAR(20) NOT NULL CHECK (promo_discount_type IN ('PERCENTAGE', 'FIXED_AMOUNT')),
+    promo_discount_value DECIMAL(10,2) NOT NULL CHECK (promo_discount_value > 0),
+    promo_minimum_order DECIMAL(10,2) NOT NULL DEFAULT 0 CHECK (promo_minimum_order >= 0),
+    promo_usage_limit INT CHECK (promo_usage_limit IS NULL OR promo_usage_limit > 0),
+    promo_usage_count INT NOT NULL DEFAULT 0 CHECK (promo_usage_count >= 0),
+    promo_starts_at TIMESTAMP NOT NULL,
+    promo_ends_at TIMESTAMP NOT NULL,
+    promo_active BOOLEAN NOT NULL DEFAULT TRUE,
+    CHECK (promo_ends_at > promo_starts_at)
+);
 
 CREATE INDEX IF NOT EXISTS ix_marketplace_stores_seller_user
     ON marketplace_stores (seller_user_id, store_id DESC);

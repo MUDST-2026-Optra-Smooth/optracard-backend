@@ -77,6 +77,10 @@ CREATE TABLE Orders (
      Ord_ID SERIAL PRIMARY KEY,
      UA_ID INT REFERENCES Users_Admins(UA_ID),
      Ord_Total_Price DECIMAL(10, 2) NOT NULL,
+     Ord_Subtotal DECIMAL(10, 2),
+     Ord_Promotion_Code VARCHAR(50),
+     Ord_Promotion_Name VARCHAR(255),
+     Ord_Discount_Amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
      Ord_PayMethod VARCHAR(100),
      Ord_Status VARCHAR(50),
      Ord_ShippingAddress TEXT,
@@ -92,6 +96,21 @@ CREATE TABLE Orders (
      Ord_Store_ID INT,
      Ord_Store_Name VARCHAR(255),
      Ord_Source VARCHAR(20) NOT NULL DEFAULT 'OFFICIAL'
+);
+
+CREATE TABLE Promotions (
+     Promo_ID SERIAL PRIMARY KEY,
+     Promo_Code VARCHAR(50) NOT NULL UNIQUE,
+     Promo_Name VARCHAR(255) NOT NULL,
+     Promo_Discount_Type VARCHAR(20) NOT NULL CHECK (Promo_Discount_Type IN ('PERCENTAGE', 'FIXED_AMOUNT')),
+     Promo_Discount_Value DECIMAL(10, 2) NOT NULL CHECK (Promo_Discount_Value > 0),
+     Promo_Minimum_Order DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (Promo_Minimum_Order >= 0),
+     Promo_Usage_Limit INT CHECK (Promo_Usage_Limit IS NULL OR Promo_Usage_Limit > 0),
+     Promo_Usage_Count INT NOT NULL DEFAULT 0 CHECK (Promo_Usage_Count >= 0),
+     Promo_Starts_At TIMESTAMP NOT NULL,
+     Promo_Ends_At TIMESTAMP NOT NULL,
+     Promo_Active BOOLEAN NOT NULL DEFAULT TRUE,
+     CHECK (Promo_Ends_At > Promo_Starts_At)
 );
 
 CREATE TABLE Carts (
@@ -114,5 +133,38 @@ CREATE TABLE OrderItems (
      Pro_ID INT REFERENCES Products(Pro_ID),
      OrdItems_Quantity INT NOT NULL,
      OrdItems_Price DECIMAL(10, 2) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS stock_alert_settings (
+     setting_id INT PRIMARY KEY,
+     default_threshold INT NOT NULL DEFAULT 5 CHECK (default_threshold >= 1)
+);
+
+INSERT INTO stock_alert_settings (setting_id, default_threshold)
+VALUES (1, 5)
+ON CONFLICT (setting_id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS stock_alert_store_settings (
+     store_id INT PRIMARY KEY REFERENCES marketplace_stores(store_id) ON DELETE CASCADE,
+     default_threshold INT NOT NULL DEFAULT 5 CHECK (default_threshold >= 1)
+);
+
+CREATE TABLE IF NOT EXISTS stock_alerts (
+     stock_alert_id SERIAL PRIMARY KEY,
+     pro_id INT NOT NULL UNIQUE REFERENCES Products(Pro_ID) ON DELETE CASCADE,
+     alert_type VARCHAR(30) NOT NULL CHECK (alert_type IN ('LOW_STOCK', 'OUT_OF_STOCK')),
+     current_stock INT NOT NULL,
+     threshold INT NOT NULL CHECK (threshold >= 1),
+     activated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     resolved_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS stock_alert_reads (
+     stock_alert_read_id SERIAL PRIMARY KEY,
+     stock_alert_id INT NOT NULL REFERENCES stock_alerts(stock_alert_id) ON DELETE CASCADE,
+     ua_id INT NOT NULL REFERENCES Users_Admins(UA_ID) ON DELETE CASCADE,
+     read_at TIMESTAMP NOT NULL,
+     CONSTRAINT uq_stock_alert_read_user UNIQUE (stock_alert_id, ua_id)
 );
 

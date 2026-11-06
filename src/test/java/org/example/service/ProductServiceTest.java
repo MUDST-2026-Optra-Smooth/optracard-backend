@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.util.List;
 import java.util.Optional;
@@ -19,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
 class ProductServiceTest {
@@ -60,14 +63,99 @@ class ProductServiceTest {
         p.setProName("Charizard");
         p.setIsActive(true);
         p.setListingSource("OFFICIAL");
-        when(productRepository.searchByKeyword("Charizard")).thenReturn(List.of(p));
+        when(productRepository.findByIsActiveTrueOrderByProTypeAscProIdAsc()).thenReturn(List.of(p));
 
         List<CatalogProductResponse> results = productService.searchProducts(" Charizard ");
 
         assertNotNull(results);
         assertEquals(1, results.size());
         assertEquals("Charizard", results.get(0).name());
-        verify(productRepository).searchByKeyword("Charizard");
+        verify(productRepository).findByIsActiveTrueOrderByProTypeAscProIdAsc();
+    }
+
+    @Test
+    void searchProducts_ranksExactAndHidesUnapprovedListings() {
+        Product exact = new Product();
+        exact.setProId(1);
+        exact.setProName("Pokemon Card");
+        exact.setIsActive(true);
+        Product fuzzy = new Product();
+        fuzzy.setProId(2);
+        fuzzy.setProName("Pokamon Card");
+        fuzzy.setIsActive(true);
+        Product hidden = new Product();
+        hidden.setProId(3);
+        hidden.setProName("Pokemon hidden");
+        hidden.setIsActive(true);
+        hidden.setListingSource("MARKETPLACE");
+        hidden.setApprovalStatus("PENDING");
+        when(productRepository.findByIsActiveTrueOrderByProTypeAscProIdAsc()).thenReturn(List.of(fuzzy, hidden, exact));
+
+        assertEquals(List.of(1, 2), productService.searchProducts("pokemon").stream()
+                .map(CatalogProductResponse::id).toList());
+    }
+
+    @Test
+    void catalog_usesTolerantMatchingForTyposAndThaiAliases() {
+        CardGame pokemon = new CardGame();
+        pokemon.setGameName("Pokemon");
+
+        Product matched = new Product();
+        matched.setProId(1);
+        matched.setProName("Pokemon Card");
+        matched.setProType("Single");
+        matched.setCardGame(pokemon);
+        matched.setProPriceOfSell(100.0);
+        matched.setProQuantity(1);
+        matched.setIsActive(true);
+        matched.setListingSource("OFFICIAL");
+
+        Product unrelated = new Product();
+        unrelated.setProId(2);
+        unrelated.setProName("Blue-Eyes White Dragon");
+        unrelated.setProType("Single");
+        unrelated.setIsActive(true);
+        unrelated.setListingSource("OFFICIAL");
+
+        when(productRepository.findAll(any(Specification.class), any(Sort.class)))
+                .thenReturn(List.of(matched, unrelated));
+
+        assertEquals(List.of(1), productService.catalog("pokamon", null, null, null, null,
+                        null, null, null, "newest", 0, 24).items().stream()
+                .map(CatalogProductResponse::id).toList());
+        assertEquals(List.of(1), productService.catalog("โปเกมอน", null, null, null, null,
+                        null, null, null, "newest", 0, 24).items().stream()
+                .map(CatalogProductResponse::id).toList());
+    }
+
+    @Test
+    void searchProducts_onlyReturnsActiveApprovedMarketplaceProductsFromApprovedStores() {
+        MarketplaceStore approved = new MarketplaceStore();
+        approved.setStoreName("Card Corner");
+        approved.setStoreStatus("APPROVED");
+        MarketplaceStore pendingStore = new MarketplaceStore();
+        pendingStore.setStoreName("Card Corner");
+        pendingStore.setStoreStatus("PENDING");
+        Product visible = marketplaceProduct(1, approved, "APPROVED", true);
+        Product pendingListing = marketplaceProduct(2, approved, "PENDING", true);
+        Product pendingSeller = marketplaceProduct(3, pendingStore, "APPROVED", true);
+        Product inactive = marketplaceProduct(4, approved, "APPROVED", false);
+        when(productRepository.findByIsActiveTrueOrderByProTypeAscProIdAsc())
+                .thenReturn(List.of(visible, pendingListing, pendingSeller, inactive));
+
+        assertEquals(List.of(1), productService.searchProducts("card corner").stream()
+                .map(CatalogProductResponse::id).toList());
+    }
+
+    private Product marketplaceProduct(int id, MarketplaceStore store, String approval, boolean active) {
+        Product product = new Product();
+        product.setProId(id);
+        product.setProName("Pokemon Card");
+        product.setListingSource("MARKETPLACE");
+        product.setApprovalStatus(approval);
+        product.setIsActive(active);
+        product.setStore(store);
+        return product;
     }
 
     @Test

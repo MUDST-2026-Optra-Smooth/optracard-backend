@@ -6,11 +6,13 @@ import org.example.model.MarketplaceStore;
 import org.example.model.Order;
 import org.example.model.OrderItem;
 import org.example.model.Product;
+import org.example.model.StockAlertSettings;
 import org.example.model.User;
 import org.example.repository.CardGameRepository;
 import org.example.repository.MarketplaceStoreRepository;
 import org.example.repository.OrderRepository;
 import org.example.repository.ProductRepository;
+import org.example.repository.StockAlertSettingsRepository;
 import org.example.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,7 @@ public class AdminDataService {
     private final UserRepository userRepository;
     private final OrderNotificationService notificationService;
     private final ProductDeletionService productDeletionService;
+    private final StockAlertSettingsRepository stockAlertSettingsRepository;
 
     public AdminDataService(ProductRepository productRepository,
                             OrderRepository orderRepository,
@@ -44,7 +47,8 @@ public class AdminDataService {
                             CardGameRepository cardGameRepository,
                             UserRepository userRepository,
                              OrderNotificationService notificationService,
-                             ProductDeletionService productDeletionService) {
+                             ProductDeletionService productDeletionService,
+                             StockAlertSettingsRepository stockAlertSettingsRepository) {
         this.productRepository = productRepository;
         this.orderRepository = orderRepository;
         this.storeRepository = storeRepository;
@@ -52,6 +56,7 @@ public class AdminDataService {
         this.userRepository = userRepository;
         this.notificationService = notificationService;
         this.productDeletionService = productDeletionService;
+        this.stockAlertSettingsRepository = stockAlertSettingsRepository;
     }
 
     @Transactional(readOnly = true)
@@ -104,9 +109,14 @@ public class AdminDataService {
         int pendingMarketplaceRequests = (int) products.stream()
                 .filter(product -> "MARKETPLACE".equalsIgnoreCase(product.getListingSource()))
                 .filter(product -> "PENDING".equalsIgnoreCase(product.getApprovalStatus())).count();
+        int stockAlertThreshold = stockAlertSettingsRepository.findById(StockAlertSettings.SETTINGS_ID)
+                .map(StockAlertSettings::getDefaultThreshold)
+                .filter(value -> value != null && value >= 1)
+                .orElse(StockAlertSettings.DEFAULT_THRESHOLD);
         int lowStockProducts = (int) products.stream().filter(this::isOfficial)
                 .filter(product -> Boolean.TRUE.equals(product.getIsActive()))
-                .filter(product -> integer(product.getProQuantity()) <= 5).count();
+                .filter(product -> integer(product.getProQuantity()) > 0
+                        && integer(product.getProQuantity()) <= stockAlertThreshold).count();
 
         return new AdminData.DashboardResponse(revenue, expenses, revenue - expenses, orders.size(), totalItems,
                 orders.isEmpty() ? 0d : revenue / orders.size(), activeOfficialProducts, activeMarketplaceProducts,
@@ -171,10 +181,12 @@ public class AdminDataService {
     }
 
     @Transactional(readOnly = true)
-    public List<AdminData.OrderResponse> getOrders() {
+    public List<AdminData.OrderResponse> getOrders(String source) {
+        String requestedSource = normalizeOrderSource(source);
         Map<Integer, Product> products = productMap();
         Map<Integer, User> users = userMap();
         return orderRepository.findAllByOrderByCreatedAtDesc().stream()
+                .filter(order -> "ALL".equals(requestedSource) || requestedSource.equals(orderSource(order)))
                 .map(order -> toOrderResponse(order, products, users)).toList();
     }
 
@@ -193,6 +205,10 @@ public class AdminDataService {
         }
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
+        if ("MARKETPLACE".equals(orderSource(order))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Marketplace orders are fulfilled by the seller and are read-only for administrators");
+        }
         boolean shippingNow = "SHIPPED".equals(normalized) && !"SHIPPED".equalsIgnoreCase(order.getStatus());
         if (shippingNow) {
             order.setTrackingNumber(requireTrackingNumber(trackingNumber));
@@ -298,9 +314,14 @@ public class AdminDataService {
         User user = users.get(order.getUserId());
         return new AdminData.OrderResponse(order.getOrderId(), orderNumber(order), order.getUserId(),
                 user == null ? "Unknown customer" : user.getUsername(), order.getCreatedAt(), order.getTotalPrice(),
-                order.getSource(), order.getStoreId(), order.getStoreName(), displayStatus(order.getStatus()),
+                orderSource(order), order.getStoreId(), order.getStoreName(), displayStatus(order.getStatus()),
                 order.getPaymentStatus(), order.getPaymentMethod(), order.getShippingMethod(), order.getShippingAddress(), order.getRecipientName(),
-                order.getRecipientPhone(), order.getTrackingNumber(), items);
+                order.getRecipientPhone(), order.getTrackingNumber(), items,
+                number(order.getShippingFee()),
+                order.getSubtotal() == null
+                        ? items.stream().mapToDouble(item -> number(item.price()) * integer(item.quantity())).sum()
+                        : order.getSubtotal(),
+                order.getPromotionCode(), order.getPromotionName(), number(order.getDiscountAmount()));
     }
 
     private AdminData.StoreResponse toStoreResponse(MarketplaceStore store, int productCount) {
@@ -318,6 +339,18 @@ public class AdminDataService {
 
     private boolean isOfficial(Product product) {
         return !"MARKETPLACE".equalsIgnoreCase(product.getListingSource());
+    }
+
+    private String normalizeOrderSource(String source) {
+        String normalized = source == null || source.isBlank() ? "OFFICIAL" : source.trim().toUpperCase(Locale.ROOT);
+        if (!List.of("OFFICIAL", "MARKETPLACE", "ALL").contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid order source");
+        }
+        return normalized;
+    }
+
+    private String orderSource(Order order) {
+        return "MARKETPLACE".equalsIgnoreCase(order.getSource()) ? "MARKETPLACE" : "OFFICIAL";
     }
 
     private String orderNumber(Order order) {
@@ -356,4 +389,50 @@ public class AdminDataService {
         }
         return normalized;
     }
+
+@Transactional(readOnly = true)
+public List<AdminData.RestockPredictionResponse> getSmartRestockPredictions() {
+    int daysHistory = 30;
+    java.time.LocalDateTime startDate = java.time.LocalDateTime.now().minusDays(daysHistory);
+    List<Order> orders = orderRepository.findByCreatedAtBetween(startDate, java.time.LocalDateTime.now());
+    
+    Map<Integer, Integer> salesInLast30Days = new HashMap<>();
+    for (Order order : orders) {
+        for (OrderItem item : order.getItems()) {
+            salesInLast30Days.merge(item.getProductId(), integer(item.getQuantity()), Integer::sum);
+        }
+    }
+
+    List<AdminData.RestockPredictionResponse> predictions = new ArrayList<>();
+    List<Product> officialProducts = productRepository.findAllByOrderByProIdDesc().stream()
+            .filter(this::isOfficial).filter(p -> Boolean.TRUE.equals(p.getIsActive())).toList();
+
+    for (Product p : officialProducts) {
+        int currentStock = integer(p.getProQuantity());
+        int totalSold = salesInLast30Days.getOrDefault(p.getProId(), 0);
+        
+        if (totalSold == 0) {
+            predictions.add(new AdminData.RestockPredictionResponse(
+                    p.getProId(), p.getProName(), currentStock, 
+                    0.0, null, 0, "There is not enough information."
+            ));
+        } else {
+            double avgDailySales = (double) totalSold / daysHistory;
+            int daysUntilOut = (int) (currentStock / avgDailySales);
+            
+            int targetStockFor14Days = (int) Math.ceil(avgDailySales * 14);
+            int recommendedRestock = Math.max(0, targetStockFor14Days - currentStock);
+            
+            String message = daysUntilOut <= 7 ? "Restock immediately!" : "Stock is still sufficient.";
+            if (currentStock == 0) message = "Out of stock!";
+
+            predictions.add(new AdminData.RestockPredictionResponse(
+                    p.getProId(), p.getProName(), currentStock, 
+                    Math.round(avgDailySales * 100.0) / 100.0, daysUntilOut, 
+                    recommendedRestock, message
+            ));
+        }
+    }
+    return predictions;
+}
 }

@@ -32,7 +32,7 @@ The backend powers both the **Optracard Official Store** and a **Multi-Store Sel
   - [Database Setup](#database-setup)
   - [Running the Application](#running-the-application)
   - [Running Tests & Testing Architecture](#running-tests--testing-architecture)
-- [Default Demo Accounts](#default-demo-accounts)
+- [Existing Local Accounts](#existing-local-accounts)
 
 ---
 
@@ -166,8 +166,10 @@ Public catalog browsing is open; product creation requires `ADMIN` or `SUPER_ADM
 | `GET` | `/api/products` or `/api/products/home` | Public | Returns curated catalog products for the storefront home page |
 | `GET` | `/api/products/{id}` | Public | Returns detailed product information by ID |
 | `GET` | `/api/products/{id}/offers` | Public | Returns alternative merchant marketplace offers for the same card |
-| `GET` | `/api/products/search?q={keyword}` | Public | Performs case-insensitive search across product name, game, and type |
+| `GET` | `/api/products/search?q={keyword}` | Public | Searches public products by relevance; supports typos in product/game names and Thai game synonyms |
 | `POST` | `/api/products` | `ADMIN`, `SUPER_ADMIN` | Creates a new official store product listing |
+
+Search ignores case and Latin accents, supports `โปเกมอน` (Pokemon) and `วันพีซ` (One Piece), and allows one typo in words of 4–7 characters or two in longer words. Other searchable fields (type, description, and store) match exactly. Public visibility rules apply before ranking. Search scans active catalog products in application memory; consider indexed search if the catalog grows substantially.
 
 ---
 
@@ -295,21 +297,19 @@ Restricted exclusively to `SUPER_ADMIN`.
 
 Configuration files are located in `src/main/resources/`:
 - `application.properties`: Shared configuration across all environments.
-- `application-local.properties`: Default settings for local development.
+- `application-local.properties`: Settings loaded when the `local` profile is explicitly selected.
 
-### Common Configuration Keys
+### Required local configuration
 
-| Key | Description | Default (Local) |
-|---|---|---|
-| `spring.profiles.active` | Active Spring profile | `local` |
-| `spring.datasource.url` | JDBC connection string | `jdbc:postgresql://localhost:5432/optracard` |
-| `spring.datasource.username` | Database username | `admin` |
-| `spring.datasource.password` | Database password | `password` |
-| `spring.jpa.hibernate.ddl-auto` | Hibernate DDL generation mode | `update` |
-| `jwt.secret` | Secret key for JWT signing / HMAC validation | `optracard-local-jwt-secret-change-this-value` |
-| `app.rate-limit.enabled` | Enable/disable RateLimitFilter | `false` (in local) |
-| `springdoc.swagger-ui.path` | Swagger UI web path | `/swagger-ui.html` |
-| `springdoc.api-docs.path` | OpenAPI JSON schema path | `/v3/api-docs` |
+Set these values in your shell or a local secret manager before running the
+application with the `local` profile. Do not commit them to the repository.
+
+| Variable | Purpose |
+|---|---|
+| `SPRING_DATASOURCE_URL` | JDBC connection string |
+| `SPRING_DATASOURCE_USERNAME` | Database username |
+| `SPRING_DATASOURCE_PASSWORD` | Database password |
+| `JWT_SECRET` | JWT signing key; use at least 32 random bytes |
 
 ---
 
@@ -326,7 +326,7 @@ Configuration files are located in `src/main/resources/`:
    CREATE DATABASE optracard;
    ```
 2. Run `database/init.sql` to initialize tables, constraints, and relational schemas.
-3. (Optional) Run `database/seed-seller-account.sql` if you want predefined test accounts.
+3. Existing database users keep their credentials. A new database has no pre-seeded accounts; register users through the application and bootstrap staff through a protected deployment procedure.
 
 ### Running the Application
 
@@ -341,20 +341,25 @@ The application will start on port `8080`.
 
 ### Running Tests & Testing Architecture
 
-OptraCard adopts a robust, multi-tiered testing strategy comprising **Unit Tests** and **End-to-End Integration Tests**, verified by automated JaCoCo code coverage.
+OptraCard adopts an extensive, multi-tiered testing strategy comprising **Unit Tests** and **End-to-End Integration Tests** (50 test classes, 225 automated tests), verified by automated JaCoCo code coverage and CI/CD pipelines.
 
 #### 1. Unit Tests (`src/test/java/org/example/...`)
-- **Controller WebMvc Tests** (`@WebMvcTest` + MockMvc):
-  - Validates HTTP request routing, input validation, serialization/deserialization, and HTTP response codes in isolation with mocked service dependencies.
-  - Controllers tested: `AdminController`, `AdminDataController`, `AuthController`, `CartController`, `OrderController`, `ProductController`, `ProfileController`, `SellerController`, `StoreApplicationController`, `SuperAdminController`.
+- **Controller Layer Tests** (MockMvc / Unit):
+  - Validates HTTP request routing, input validation, serialization/deserialization, query parameter handling, and status codes in isolation with mocked service dependencies.
+  - Controllers tested: `AuthController`, `CartController`, `ProductController`, `OrderController`, `ProfileController`, `SellerController`, `AdminDataController`, `AdminStoreController`, `AdminMarketplaceController`, `SuperAdminDataController`, `MarketplaceCatalogController`, `MarketplaceStoreController`, `OrderNotificationController`, `ReportController`, `PromotionAdminController`, `StockAlertController`.
 - **Service Layer Tests** (`@ExtendWith(MockitoExtension.class)`):
-  - Validates business logic, state transitions, security boundary checks, and repository interactions using Mockito.
-  - Services tested: `AuthService`, `ProductService`, `ProductDeletionService`, `CartService`, `OrderService`, `OrderNotificationService`, `ProfileService`, `SellerService`, `AdminDataService`, `MarketplaceStoreService`, `SuperAdminDataService`.
-- **Security & Utility Tests**:
-  - Validates `JwtTokenUtil` (token signing, claims parsing, expiration, role mapping) and `RateLimitFilter` (token-bucket rate limiting algorithms).
+  - Validates core business logic, entity state transitions, stock decrement/replenishment, discount formulas, RBAC authorization, and repository interactions.
+  - Services tested: `AuthService`, `CartService`, `ProductService`, `ProductDeletionService`, `OrderService`, `OrderNotificationService`, `ProfileService`, `SellerService`, `AdminDataService`, `MarketplaceStoreService`, `SuperAdminDataService`, `PromotionService`, `StockAlertService`, `ReportService`, `ReorderService`, `CatalogProductSpecification`, `CatalogSearchMatcher`.
+- **Security & Configuration Tests**:
+  - `JwtAuthenticationFilterTest`: Validates Authorization header parsing, Bearer prefix extraction, role prefix normalizing, and security context establishment.
+  - `JwtUtilTest`: Validates cryptographic signing, claims parsing, role extraction, and token expiration validation.
+  - `RateLimitFilterTest`: Validates token-bucket rate limiting algorithms, OPTIONS/Swagger bypasses, IP isolation, and 429 Retry-After handling.
+  - `SecurityConfigTest`: Validates BCrypt password encoder settings, CORS allowed origins, allowed methods, exposed headers, and credentials flags.
+  - `LocalCatalogSeederTest` & `LegacyCardGameNormalizerTest`: Validates startup demo data seeding, order reconciliation, and deduplication of legacy card game labels.
+  - `OpenAPIConfigTest`: Validates OpenAPI 3.0 documentation metadata and Bearer security scheme definitions.
 
 #### 2. End-to-End Integration Tests (`src/test/java/org/example/integration/`)
-Integration tests run against a full Spring Boot application context (`@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)`), full Spring Security filter chains, and an in-memory **H2 Database** in PostgreSQL compatibility mode (`@ActiveProfiles("test")`). No external PostgreSQL installation is required.
+Integration tests run against a full Spring Boot application context (`@SpringBootTest`), full Spring Security filter chains, and an in-memory **H2 Database** in PostgreSQL compatibility mode (`@ActiveProfiles("test")`). No external PostgreSQL installation is required.
 
 - **`AuthIntegrationTest`**:
   - Full registration pipeline: persistence to database, BCrypt password hashing, and user role assignment.
@@ -371,11 +376,34 @@ Integration tests run against a full Spring Boot application context (`@SpringBo
 - **`CartIntegrationTest`**:
   - Complete cart lifecycle: adding items, fetching user cart, updating quantities, removing items, and clearing carts.
   - Cross-user security: prevents unauthorized access to another user's cart (`403 Forbidden`).
+- **`OrderIntegrationTest`**:
+  - Complete checkout lifecycle: cart checkout with inventory decrement and order creation.
+  - Order status retrieval, tracking numbers, and role-based order viewing boundaries.
+  - Stock validation: prevents checkout when order quantity exceeds available stock.
+- **`PromotionIntegrationTest`**:
+  - Promotion coupon creation, editing, previewing, and validation.
+  - Subtotal discount computation (percentage discounts, maximum discount caps, minimum order value thresholds).
+  - RBAC protection: non-admin users forbidden from creating or modifying promotions.
+- **`StoreManagementIntegrationTest`**:
+  - Merchant store onboarding application submission (`POST /api/stores/apply`).
+  - Duplicate store application prevention and initial `PENDING` status enforcement.
+  - Administrative review workflow (`PUT /api/admin/stores/{id}/review`): approval and rejection state transitions.
+- **`SecurityRbacIntegrationTest`**:
+  - Comprehensive RBAC matrix across `CUSTOMER`, `SELLER`, `ADMIN`, `ADMIN_MASTER`, and `SUPER_ADMIN`.
+  - Enforces least privilege: Customers cannot access seller or admin dashboards; Sellers cannot access admin operations; Admins cannot access super-admin staff creation.
+  - Expired and malformed JWT token rejection.
+  - Public endpoint whitelisting (`/api/products`, `/api/marketplace`, Swagger UI, Actuator) and CORS preflight handling.
+- **`SecurityHardeningIntegrationTest`**:
+  - SQL injection payload resilience (`' OR 1=1 --`, `'; DROP TABLE;`) on public search endpoints.
+  - Cross-Site Scripting (XSS) input filtering and sanitization across catalog parameters.
+  - Privilege escalation defense: prevents client payloads from overriding assigned `USER` roles during registration.
+  - Forged algorithm `none` and tampered cryptographic signature rejection.
+  - Negative and malformed entity ID handling (returning clean `404 Not Found` without 500 error leaks).
 
 #### Test Execution Commands
 
 ```bash
-# Run all tests (Unit + Integration tests)
+# Run all 225 tests (Unit + Integration tests)
 mvn test
 
 # Run only Unit Tests (excluding integration tests)
@@ -385,21 +413,17 @@ mvn test -Dtest="!*IntegrationTest"
 mvn test -Dtest="*IntegrationTest"
 
 # Run a specific test class
-mvn test -Dtest=AuthIntegrationTest
+mvn test -Dtest=SecurityHardeningIntegrationTest
 ```
 
 ---
 
-## Default Demo Accounts
+## Existing Local Accounts
 
-When running in `local` profile, the following demo accounts are available:
-
-| Email | Password | Role | Description |
-|---|---|---|---|
-| `superadmin@optracard.com` | `password123` | `SUPER_ADMIN` | Platform Super Administrator |
-| `ops@optracard.com` | `password123` | `ADMIN` | Operations Administrator |
-| `seller.demo@optracard.local` | `SellerDemo!2026` | `SELLER` | Approved Merchant (`AAA-Trading`) |
-| `somchai@optracard.com` | `password123` | `USER` | Regular Customer Account |
+The repository does not create accounts or distribute default passwords. An
+existing local database retains its users and credentials. On an empty database,
+the local catalog seeds games and Official products only. Marketplace stores and
+products are created only when their seller already exists.
 
 ---
 
@@ -407,10 +431,10 @@ When running in `local` profile, the following demo accounts are available:
 
 ### Running with Docker Compose
 
-The repository includes a ready-to-run [`docker-compose.yaml`](./docker-compose.yaml) that coordinates both PostgreSQL and the Spring Boot backend service:
+The repository includes [`docker-compose.yaml`](./docker-compose.yaml) for PostgreSQL and the Spring Boot backend. Copy [`.env.example`](./.env.example) to a local `.env` file, then set `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `JWT_SECRET` before starting it:
 
 ```bash
-# Start both PostgreSQL and OptraCard Backend
+# Start both PostgreSQL and OptraCard Backend after setting the required variables
 docker-compose up -d --build
 
 # View real-time logs
@@ -422,7 +446,7 @@ docker-compose down
 
 The services will be accessible at:
 - Backend API & Swagger: `http://localhost:8080/swagger-ui.html`
-- PostgreSQL: `localhost:5432` (database: `optracard`, user: `admin`, password: `password`)
+- PostgreSQL: `localhost:5432` (database name defaults to `optracard`)
 
 ### Standalone Docker Image Build
 
@@ -432,11 +456,12 @@ Build and run using the multi-stage [`Dockerfile`](./Dockerfile):
 # Build the container image
 docker build -t optracard-backend:latest .
 
-# Run the container (pointing to your PostgreSQL database)
+# Run the container with values supplied from your shell or secret manager
 docker run -d -p 8080:8080 \
-  -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/optracard \
-  -e SPRING_DATASOURCE_USERNAME=admin \
-  -e SPRING_DATASOURCE_PASSWORD=password \
+  -e SPRING_DATASOURCE_URL \
+  -e SPRING_DATASOURCE_USERNAME \
+  -e SPRING_DATASOURCE_PASSWORD \
+  -e JWT_SECRET \
   --name optracard-backend \
   optracard-backend:latest
 ```
@@ -448,16 +473,23 @@ docker run -d -p 8080:8080 \
 OptraCard includes Kubernetes orchestration manifests in [`app-pod.yaml`](./app-pod.yaml):
 - **Namespace**: `optracard-backend`
 - **PostgreSQL**: a single-replica Deployment with a `1Gi` PersistentVolumeClaim and an internal ClusterIP Service
-- **Configuration**: ConfigMap for non-sensitive values and Secret for database credentials and JWT signing key
+- **Configuration**: ConfigMap for non-sensitive values and Secret for database credentials and JWT signing key. The local Kubernetes manifest uses the `local` profile so an empty database receives the Official catalog and never creates or overwrites accounts. Existing seller accounts can receive their matching demo Marketplace listings.
 - **Backend**: `optracard-backend-deployment` (2 replicas, resource requests/limits, HTTP readiness and liveness probes on `/v3/api-docs`)
 - **Public API Service**: `optracard-backend-service` (NodePort `30081`, forwarding port `8080` to containers)
 
-The Secret contains demo-only values so that a fresh cluster is runnable. Change `POSTGRES_PASSWORD` and `JWT_SECRET` in `app-pod.yaml` before deploying to a shared cluster.
+The manifest references an existing `optracard-backend-secrets` Secret. Create it outside source control with `POSTGRES_USER`, `POSTGRES_PASSWORD`, and a unique `JWT_SECRET` before deployment:
+
+```bash
+kubectl create namespace optracard-backend
+kubectl -n optracard-backend create secret generic optracard-backend-secrets \
+  --from-env-file=/secure/path/optracard-backend.env
+```
 
 ### Applying to Kubernetes Cluster
 
 ```bash
-# 1. Apply PostgreSQL, configuration, backend deployment, and services
+# 1. Create the required Secret outside source control, then apply PostgreSQL,
+#    configuration, backend deployment, and services
 kubectl apply -f app-pod.yaml
 
 # 2. Check both rollouts

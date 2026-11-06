@@ -98,4 +98,13 @@ public class ProductController {
             @RequestParam(name = "q", defaultValue = "") String q) {
         return ResponseEntity.ok(productService.searchProducts(q));
     }
+
+    @GetMapping("/catalog")
+    public ResponseEntity<org.example.dto.CatalogPageResponse> catalog(@RequestParam(defaultValue="") String q,@RequestParam(required=false) String type,@RequestParam(required=false) String game,@RequestParam(required=false) Double minPrice,@RequestParam(required=false) Double maxPrice,@RequestParam(required=false) String language,@RequestParam(required=false) String source,@RequestParam(required=false) Integer storeId,@RequestParam(defaultValue="newest") String sort,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="24") int pageSize) {
+        if((minPrice!=null&&minPrice<0)||(maxPrice!=null&&maxPrice<0)||(minPrice!=null&&maxPrice!=null&&minPrice>maxPrice)||page<0||pageSize<1||pageSize>100||(source!=null&&!source.isBlank()&&!List.of("OFFICIAL","MARKETPLACE").contains(source.toUpperCase()))||!List.of("newest","price_asc","price_desc","name_asc").contains(sort)) return ResponseEntity.badRequest().build();
+        return ResponseEntity.ok(productService.catalog(q,type,game,minPrice,maxPrice,language,source,storeId,sort,page,pageSize));
+    }
+
+    @GetMapping("/catalog/filter-options")
+    public ResponseEntity<org.example.dto.CatalogFilterOptionsResponse> catalogFilterOptions() { return ResponseEntity.ok(productService.filterOptions()); }
 }

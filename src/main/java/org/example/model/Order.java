@@ -33,6 +33,19 @@ public class Order {
     @Column(name = "ord_total_price", nullable = false)
     private Double totalPrice;
 
+    /** Immutable totals captured at checkout, before and after a promotion. */
+    @Column(name = "ord_subtotal")
+    private Double subtotal;
+
+    @Column(name = "ord_promotion_code", length = 50)
+    private String promotionCode;
+
+    @Column(name = "ord_promotion_name", length = 255)
+    private String promotionName;
+
+    @Column(name = "ord_discount_amount")
+    private Double discountAmount = 0d;
+
     /** Snapshot of the seller responsible for this order. Official orders have no store id. */
     @Column(name = "ord_store_id")
     private Integer storeId;

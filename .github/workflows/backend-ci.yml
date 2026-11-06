@@ -4,6 +4,7 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -54,13 +55,24 @@ jobs:
       - name: Validate Kubernetes Manifests
         run: |
           pip install pyyaml
-          python -c "import yaml; docs = list(yaml.safe_load_all(open('app-pod.yaml'))); kinds = {doc['kind'] for doc in docs if doc}; required = {'Namespace', 'ConfigMap', 'Secret', 'PersistentVolumeClaim', 'Deployment', 'Service'}; assert required <= kinds, f'Missing: {required-kinds}'; print(f'Validated {len(docs)} Kubernetes manifests successfully')"
+          python -c "import yaml; docs = list(yaml.safe_load_all(open('app-pod.yaml'))); kinds = {doc['kind'] for doc in docs if doc}; required = {'Namespace', 'ConfigMap', 'PersistentVolumeClaim', 'Deployment', 'Service'}; assert required <= kinds, f'Missing: {required-kinds}'; assert 'Secret' not in kinds, 'Credentials must be supplied as an external Kubernetes Secret'; print(f'Validated {len(docs)} Kubernetes manifests successfully')"
+
+      - name: Validate Docker Compose configuration
+        env:
+          POSTGRES_USER: ci-user
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+          JWT_SECRET: ${{ github.sha }}
+        run: docker compose -f docker-compose.yaml config --quiet
 
   deploy:
     name: Build, Push & Deploy Backend
     needs: build-and-test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Windows, X64]
+    env:
+      BACKEND_API_URL: ${{ secrets.BACKEND_API_URL }}
+      E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
     defaults:
       run:
         shell: powershell -ExecutionPolicy Bypass -Command "{0}"
@@ -103,3 +115,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           kubectl rollout status deployment/optracard-backend-deployment -n optracard-backend --timeout=600s
           if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Run deployed read-only API smoke checks
+        if: env.BACKEND_API_URL != ''
+        run: |
+          .\scripts\deployed-api-smoke.ps1 -ApiBaseUrl $env:BACKEND_API_URL -Email $env:E2E_EMAIL -Password $env:E2E_PASSWORD

@@ -56,12 +56,18 @@ class SecurityConfigTest {
         CorsConfiguration config = source.getCorsConfiguration(request);
         assertNotNull(config);
 
-        List<String> originPatterns = config.getAllowedOriginPatterns();
-        assertNotNull(originPatterns);
-        assertTrue(originPatterns.contains("http://localhost"));
-        assertTrue(originPatterns.contains("http://localhost:*"));
-        assertTrue(originPatterns.contains("http://127.0.0.1"));
-        assertTrue(originPatterns.contains("http://127.0.0.1:*"));
+        List<String> origins = config.getAllowedOrigins();
+        assertNotNull(origins);
+        assertTrue(origins.containsAll(List.of(
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://localhost:4173",
+                "http://127.0.0.1:4173",
+                "http://localhost:30080",
+                "http://127.0.0.1:30080"
+        )));
+        assertEquals("http://127.0.0.1:30080", config.checkOrigin("http://127.0.0.1:30080"));
+        assertNull(config.checkOrigin("http://127.0.0.1:30081"));
 
         List<String> methods = config.getAllowedMethods();
         assertNotNull(methods);

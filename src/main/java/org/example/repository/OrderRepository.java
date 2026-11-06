@@ -18,4 +18,7 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
 
     @EntityGraph(attributePaths = {"items"})
     java.util.Optional<Order> findByOrderIdAndStoreId(Integer orderId, Integer storeId);
+
+    @EntityGraph(attributePaths = {"items"})
+    List<Order> findByCreatedAtBetween(java.time.LocalDateTime startDate, java.time.LocalDateTime endDate);
 }

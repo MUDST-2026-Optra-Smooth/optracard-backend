@@ -16,5 +16,13 @@ public record SellerOrderResponse(
         String recipientName,
         String recipientPhone,
         String trackingNumber,
-        List<OrderItemResponse> items
+        List<OrderItemResponse> items,
+        /** Store name as it was at checkout. */
+        String storeName,
+        Double shippingFee,
+        /** Items only, before discount and shipping. */
+        Double subtotal,
+        String discountCode,
+        String discountName,
+        Double discountAmount
 ) {}

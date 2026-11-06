@@ -34,7 +34,6 @@ public class SecurityConfig {
     private final RateLimitFilter rateLimitFilter;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    // Inject ตัว RateLimitFilter เข้ามา
     public SecurityConfig(RateLimitFilter rateLimitFilter, JwtAuthenticationFilter jwtAuthenticationFilter) {
         this.rateLimitFilter = rateLimitFilter;
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
@@ -42,18 +41,22 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(); // ใช้สำหรับเข้ารหัสผ่าน
+        return new BCryptPasswordEncoder();
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of(
-                "http://localhost",
-                "http://localhost:*",
-                "http://127.0.0.1",
-                "http://127.0.0.1:*"
-        )); // React Vite dev / test / preview ports and local docker container
+        config.setAllowedOrigins(List.of(
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://localhost:5174", 
+                "http://127.0.0.1:5174",
+                "http://localhost:4173",
+                "http://127.0.0.1:4173",
+                "http://localhost:30080",
+                "http://127.0.0.1:30080"
+        ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Authorization", "Content-Type", "Retry-After", "X-XSRF-TOKEN"));
@@ -81,6 +84,7 @@ public class SecurityConfig {
                                 new AntPathRequestMatcher("/v3/api-docs/**"),
                                 new AntPathRequestMatcher("/swagger-ui/**"),
                                 new AntPathRequestMatcher("/swagger-ui.html"),
+                                new AntPathRequestMatcher("/actuator/**"),
                                 request -> {
                                     String authHeader = request.getHeader("Authorization");
                                     return authHeader != null && authHeader.startsWith("Bearer ");
@@ -97,16 +101,32 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
+                                "/actuator/**",
                                 "/error"
                         ).permitAll()
-                        .requestMatchers("/api/auth", "/api/auth/**").permitAll() // เปิดให้เส้นทาง Auth เข้าได้อิสระ
+                        .requestMatchers("/api/auth", "/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/marketplace", "/api/marketplace/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/products", "/api/products/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
-                        .requestMatchers("/api/superadmin", "/api/superadmin/**").hasRole("SUPER_ADMIN")
-                        .requestMatchers("/api/admin", "/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
-                        .requestMatchers("/api/seller", "/api/seller/**").hasAnyRole("SELLER", "ADMIN", "SUPER_ADMIN")
-                        .anyRequest().authenticated() // เส้นทางอื่นต้องมี Token
+                        
+                        .requestMatchers("/api/admin/reports/**").hasAnyAuthority(
+                                "ADMIN", "ROLE_ADMIN", 
+                                "ADMIN_MASTER", "ROLE_ADMIN_MASTER", 
+                                "SUPER_ADMIN", "ROLE_SUPER_ADMIN"
+                        )
+                        
+                        .requestMatchers(HttpMethod.POST, "/api/products", "/api/products/**").hasAnyAuthority("ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ROLE_SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/stock-alerts/settings").hasAnyAuthority("SELLER", "ROLE_SELLER", "ADMIN", "ROLE_ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/stock-alerts/settings").hasAnyAuthority("SELLER", "ROLE_SELLER", "ADMIN", "ROLE_ADMIN")
+                        .requestMatchers("/api/stock-alerts", "/api/stock-alerts/**").hasAnyAuthority("SELLER", "ROLE_SELLER", "ADMIN", "ROLE_ADMIN")
+                        .requestMatchers("/api/superadmin", "/api/superadmin/**").hasAnyAuthority("SUPER_ADMIN", "ROLE_SUPER_ADMIN")
+                        
+                        .requestMatchers("/api/admin", "/api/admin/**").hasAnyAuthority(
+                                "ADMIN", "ROLE_ADMIN", 
+                                "ADMIN_MASTER", "ROLE_ADMIN_MASTER", 
+                                "SUPER_ADMIN", "ROLE_SUPER_ADMIN"
+                        )
+                        .requestMatchers("/api/seller", "/api/seller/**").hasAnyAuthority("SELLER", "ROLE_SELLER", "ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ROLE_SUPER_ADMIN")
+                        .anyRequest().authenticated()
                 );
 
         return http.build();

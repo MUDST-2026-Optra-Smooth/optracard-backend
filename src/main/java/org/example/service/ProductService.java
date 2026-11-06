@@ -3,21 +3,31 @@ package org.example.service;
 import org.example.dto.CatalogProductResponse;
 import org.example.dto.CatalogStoreResponse;
 import org.example.dto.MarketplaceStoreProfileResponse;
+import org.example.dto.CatalogPageResponse;
+import org.example.dto.CatalogFilterOptionsResponse;
 import org.example.model.MarketplaceStore;
 import org.example.model.Product;
 import org.example.repository.MarketplaceStoreRepository;
 import org.example.repository.ProductRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Comparator;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import static org.example.service.CatalogProductSpecification.publicProduct;
 
 @Service
 public class ProductService {
+    private static final Logger log = LoggerFactory.getLogger(ProductService.class);
+
     private final ProductRepository productRepository;
     private final MarketplaceStoreRepository marketplaceStoreRepository;
 
@@ -90,14 +100,89 @@ public class ProductService {
     public List<CatalogProductResponse> searchProducts(String keyword) {
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
         if (normalizedKeyword.isEmpty()) {
+            log.info("Catalog search called with empty query, returning all products");
             return getAllProducts();
         }
 
-        return productRepository.searchByKeyword(normalizedKeyword)
+        String normalizedSearchTerm = CatalogSearchMatcher.normalizeQuery(normalizedKeyword);
+
+        List<CatalogProductResponse> results = productRepository.findByIsActiveTrueOrderByProTypeAscProIdAsc()
                 .stream()
                 .filter(this::isPublicCatalogProduct)
-                .map(this::toCatalogResponse)
+                .map(product -> new ScoredProduct(product, searchScore(normalizedKeyword, product)))
+                .filter(result -> result.score() != CatalogSearchMatcher.NO_MATCH)
+                .sorted(Comparator.comparingInt(ScoredProduct::score)
+                        .thenComparing(result -> result.product().getProId(), Comparator.reverseOrder()))
+                .map(result -> toCatalogResponse(result.product()))
                 .toList();
+
+        log.info("Tolerant catalog search executed: rawQuery='{}', normalizedQuery='{}', matchedCount={}",
+                keyword, normalizedSearchTerm, results.size());
+
+        return results;
+    }
+
+    @Transactional(readOnly = true)
+    public CatalogPageResponse catalog(String q,String type,String game,Double min,Double max,String language,String source,Integer storeId,String sort,int page,int pageSize) {
+        Sort ordering=switch(sort){case "price_asc"->Sort.by("proPriceOfSell").ascending().and(Sort.by("proId").descending());case "price_desc"->Sort.by("proPriceOfSell").descending().and(Sort.by("proId").descending());case "name_asc"->Sort.by("proName").ascending().and(Sort.by("proId").descending());default->Sort.by("proId").descending();};
+        if (q != null && !q.isBlank()) {
+            List<ScoredProduct> matches = productRepository.findAll(
+                            publicProduct("", type, game, min, max, language, source, storeId), ordering)
+                    .stream()
+                    .map(product -> new ScoredProduct(product, searchScore(q, product)))
+                    .filter(result -> result.score() != CatalogSearchMatcher.NO_MATCH)
+                    .sorted(Comparator.comparingInt(ScoredProduct::score)
+                            .thenComparing(ScoredProduct::product, catalogProductComparator(sort)))
+                    .toList();
+
+            long offset = (long) page * pageSize;
+            List<CatalogProductResponse> items = offset >= matches.size()
+                    ? List.of()
+                    : matches.subList((int) offset, (int) Math.min(offset + pageSize, matches.size()))
+                    .stream().map(result -> toCatalogResponse(result.product())).toList();
+            int totalPages = (int) Math.ceil((double) matches.size() / pageSize);
+
+            log.info("Tolerant paged catalog search executed: rawQuery='{}', matchedCount={}", q, matches.size());
+            return new CatalogPageResponse(items, page, pageSize, matches.size(), totalPages, sort);
+        }
+        var result=productRepository.findAll(publicProduct(q,type,game,min,max,language,source,storeId),PageRequest.of(page,pageSize,ordering));
+        return new CatalogPageResponse(result.getContent().stream().map(this::toCatalogResponse).toList(),result.getNumber(),result.getSize(),result.getTotalElements(),result.getTotalPages(),sort);
+    }
+
+    @Transactional(readOnly = true)
+    public CatalogFilterOptionsResponse filterOptions() {
+        var types=productRepository.findPublicCatalogTypes().stream().filter(Objects::nonNull).sorted().toList();
+        var games=productRepository.findPublicCatalogGames().stream().map(row -> new CatalogFilterOptionsResponse.GameOption((Integer) row[0], (String) row[1])).sorted(java.util.Comparator.comparing(CatalogFilterOptionsResponse.GameOption::name)).toList();
+        var languages=productRepository.findPublicCatalogLanguages().stream().filter(Objects::nonNull).sorted().toList();
+        var sources=productRepository.findPublicCatalogSources().stream().filter(Objects::nonNull).sorted().toList();
+        var stores=productRepository.findPublicCatalogStores().stream().map(row -> new CatalogFilterOptionsResponse.StoreOption((Integer) row[0], (String) row[1])).sorted(java.util.Comparator.comparing(CatalogFilterOptionsResponse.StoreOption::name)).toList();
+        var priceRange=productRepository.findPublicCatalogPriceRange();
+        double min=priceRange[0] instanceof Number value ? value.doubleValue() : 0d;
+        double max=priceRange[1] instanceof Number value ? value.doubleValue() : 0d;
+        return new CatalogFilterOptionsResponse(types,games,languages,sources,stores,new CatalogFilterOptionsResponse.PriceRange(min,max));
+    }
+
+    private record ScoredProduct(Product product, int score) {}
+
+    private int searchScore(String query, Product product) {
+        String game = product.getCardGame() == null ? "Uncategorized" : product.getCardGame().getGameName();
+        String store = "MARKETPLACE".equalsIgnoreCase(product.getListingSource())
+                ? (product.getStore() == null ? "Marketplace seller" : product.getStore().getStoreName())
+                : "Optracard Official Store";
+        return CatalogSearchMatcher.score(query, product.getProName(), game, product.getProType(),
+                product.getProDescription(), store);
+    }
+
+    private Comparator<Product> catalogProductComparator(String sort) {
+        return switch (sort) {
+            case "price_asc" -> Comparator.comparing(Product::getProPriceOfSell,
+                    Comparator.nullsLast(Comparator.naturalOrder())).thenComparing(Product::getProId, Comparator.reverseOrder());
+            case "price_desc" -> Comparator.comparing(Product::getProPriceOfSell,
+                    Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(Product::getProId, Comparator.reverseOrder());
+            case "name_asc" -> Comparator.comparing(Product::getProName,
+                    Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)).thenComparing(Product::getProId, Comparator.reverseOrder());
+            default -> Comparator.comparing(Product::getProId, Comparator.reverseOrder());
+        };
     }
 
     public Product createProduct(Product product) {
