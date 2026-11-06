@@ -192,9 +192,10 @@ class PromotionServiceTest {
         assertEquals("Percentage discount cannot exceed 100", percentageException.getReason());
 
         when(promotionRepository.existsByCodeIgnoreCase("BADDATE")).thenReturn(false);
+        LocalDateTime sameMoment = now();
         ResponseStatusException dateException = assertThrows(ResponseStatusException.class, () ->
                 promotionService.createPromotion(new PromotionRequest("BADDATE", "Bad date", "FIXED_AMOUNT",
-                        10d, null, 0d, null, null, now(), now(), true)));
+                        10d, null, 0d, null, null, sameMoment, sameMoment, true)));
 
         assertEquals("Promotion end date must be after its start date", dateException.getReason());
     }
