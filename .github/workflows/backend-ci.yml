@@ -92,12 +92,17 @@ jobs:
         env:
           KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
         run: |
-          if (-not $env:KUBECONFIG_BASE64) {
-            throw 'Missing GitHub Secret KUBECONFIG_BASE64. Add a kubeconfig that is reachable from this self-hosted runner.'
+          $localKubeconfig = Join-Path $env:USERPROFILE '.kube\config'
+          if (Test-Path -LiteralPath $localKubeconfig) {
+            $kubeconfigPath = $localKubeconfig
+            Write-Host 'Using the Kubernetes context configured on this self-hosted runner.'
+          } elseif ($env:KUBECONFIG_BASE64) {
+            $kubeconfigPath = Join-Path $env:RUNNER_TEMP 'optracard-kubeconfig'
+            [IO.File]::WriteAllBytes($kubeconfigPath, [Convert]::FromBase64String($env:KUBECONFIG_BASE64.Trim()))
+            Write-Host 'Using Kubernetes access from KUBECONFIG_BASE64.'
+          } else {
+            throw 'No local Kubernetes config is available and KUBECONFIG_BASE64 is not configured.'
           }
-
-          $kubeconfigPath = Join-Path $env:RUNNER_TEMP 'optracard-kubeconfig'
-          [IO.File]::WriteAllBytes($kubeconfigPath, [Convert]::FromBase64String($env:KUBECONFIG_BASE64.Trim()))
           "KUBECONFIG=$kubeconfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
           kubectl --kubeconfig $kubeconfigPath cluster-info --request-timeout=15s
