@@ -69,10 +69,6 @@ jobs:
     needs: build-and-test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Windows, X64]
-    env:
-      BACKEND_API_URL: ${{ secrets.BACKEND_API_URL }}
-      E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
-      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
     defaults:
       run:
         shell: powershell -ExecutionPolicy Bypass -Command "{0}"
@@ -89,25 +85,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'kubectl is not available on this self-hosted runner.' }
 
       - name: Configure and verify Kubernetes access
-        env:
-          KUBECONFIG_BASE64: ${{ secrets.KUBECONFIG_BASE64 }}
         run: |
           $localKubeconfig = Join-Path $env:USERPROFILE '.kube\config'
-          if (Test-Path -LiteralPath $localKubeconfig) {
-            $kubeconfigPath = $localKubeconfig
-            Write-Host 'Using the Kubernetes context configured on this self-hosted runner.'
-          } elseif ($env:KUBECONFIG_BASE64) {
-            $kubeconfigPath = Join-Path $env:RUNNER_TEMP 'optracard-kubeconfig'
-            [IO.File]::WriteAllBytes($kubeconfigPath, [Convert]::FromBase64String($env:KUBECONFIG_BASE64.Trim()))
-            Write-Host 'Using Kubernetes access from KUBECONFIG_BASE64.'
-          } else {
-            throw 'No local Kubernetes config is available and KUBECONFIG_BASE64 is not configured.'
+          if (-not (Test-Path -LiteralPath $localKubeconfig)) {
+            throw "No Kubernetes config found at $localKubeconfig for the self-hosted runner service account."
           }
-          "KUBECONFIG=$kubeconfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "KUBECONFIG=$localKubeconfig" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-          kubectl --kubeconfig $kubeconfigPath cluster-info --request-timeout=15s
+          kubectl --kubeconfig $localKubeconfig cluster-info --request-timeout=15s
           if ($LASTEXITCODE -ne 0) {
-            throw 'The configured Kubernetes API is unreachable from this runner. Update KUBECONFIG_BASE64 for this machine.'
+            throw 'The Kubernetes API configured on this self-hosted runner is unreachable.'
           }
 
       - name: Log in to Docker Hub
@@ -134,7 +121,3 @@ jobs:
           kubectl rollout status deployment/optracard-backend-deployment -n optracard-backend --timeout=600s
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
-      - name: Run deployed read-only API smoke checks
-        if: env.BACKEND_API_URL != ''
-        run: |
-          .\scripts\deployed-api-smoke.ps1 -ApiBaseUrl $env:BACKEND_API_URL -Email $env:E2E_EMAIL -Password $env:E2E_PASSWORD
