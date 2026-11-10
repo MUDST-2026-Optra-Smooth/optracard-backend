@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AuctionRepository extends JpaRepository<Auction, Integer> {
+    boolean existsByTitle(String title);
     List<Auction> findAllByOrderByCreatedAtDesc();
     List<Auction> findBySellerUserIdOrderByCreatedAtDesc(Integer sellerUserId);
 
