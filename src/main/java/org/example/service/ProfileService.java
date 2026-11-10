@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Base64;
 
 @Service
 public class ProfileService {
@@ -64,6 +65,9 @@ public class ProfileService {
         user.setEmail(email);
         user.setPhone(normalizeOptional(request.phone()));
         user.setAddress(normalizeOptional(request.address()));
+        if (request.profileImage() != null) {
+            user.setProfileImage(normalizeProfileImage(request.profileImage()));
+        }
 
         String password = normalizeOptional(request.password());
         if (password != null) {
@@ -101,6 +105,7 @@ public class ProfileService {
                 user.getEmail(),
                 user.getPhone(),
                 user.getAddress(),
+                user.getProfileImage(),
                 collection
         );
     }
@@ -119,6 +124,29 @@ public class ProfileService {
         }
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
+    }
+
+    private String normalizeProfileImage(String value) {
+        String normalized = normalizeOptional(value);
+        if (normalized == null) return null;
+        String prefix = "data:image/";
+        int separator = normalized.indexOf(";base64,");
+        if (!normalized.startsWith(prefix) || separator < prefix.length()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Profile image must be a PNG, JPEG, GIF, or WebP data URL");
+        }
+        String mediaType = normalized.substring(prefix.length(), separator).toLowerCase();
+        if (!List.of("png", "jpeg", "gif", "webp").contains(mediaType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Profile image must be a PNG, JPEG, GIF, or WebP data URL");
+        }
+        try {
+            byte[] image = Base64.getDecoder().decode(normalized.substring(separator + ";base64,".length()));
+            if (image.length > 2 * 1024 * 1024) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Profile image must be 2 MB or smaller");
+            }
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Profile image is not valid base64 data");
+        }
+        return normalized;
     }
 
     private CollectionItemResponse toCollectionItem(CollectionItemProjection item) {

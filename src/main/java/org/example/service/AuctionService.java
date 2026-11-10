@@ -469,13 +469,16 @@ public class AuctionService {
 
     private AuctionResponse toResponse(Auction auction) {
         MarketplaceStore store = auction.getStore();
+        Integer leadingUserId = bidRepository.findFirstByAuction_AuctionIdOrderByAmountDescCreatedAtAsc(auction.getAuctionId())
+                .map(AuctionBid::getBidderUserId)
+                .orElse(null);
         return new AuctionResponse(auction.getAuctionId(), auction.getTitle(),
                 auction.getCardGame() == null ? "Uncategorized" : auction.getCardGame().getGameName(), auction.getType(),
                 auction.getImageUrl(), auction.getDescription(), auction.getStartingPrice(), auction.getCurrentPrice(),
                 auction.getBidCount(), auction.getStartsAt(), auction.getEndsAt(), auction.getCheckoutDeadline(), auction.getStatus(),
                 auction.getSource(), store == null ? null : store.getStoreId(),
                 store == null ? "Optracard Official Store" : store.getStoreName(), auction.getSellerUserId(),
-                auction.getWinningUserId(), auction.getReviewNote(), auction.getCreatedAt());
+                auction.getWinningUserId(), leadingUserId, auction.getReviewNote(), auction.getCreatedAt());
     }
 
     private AuctionBidResponse toBidResponse(AuctionBid bid) {
