@@ -171,7 +171,8 @@ public class LocalCatalogSeeder implements ApplicationRunner {
                 auction("Monkey D. Luffy Leader Parallel", "One Piece", "Single", OFFICIAL, null, LUFFY_LEADER_IMAGE, 3_200, 3_450, 4),
                 auction("Dark Magician 25th Anniversary", "Yu-Gi-Oh!", "Single", OFFICIAL, null, DARK_MAGICIAN_IMAGE, 1_800, 1_950, 3),
                 auction("Gengar VMAX Alternate Art", "Pokemon", "Single", MARKETPLACE, "card-corner-bkk", GENGAR_IMAGE, 4_500, 4_850, 8),
-                auction("Nami Manga Rare", "One Piece", "Single", MARKETPLACE, "moonlight-tcg", NAMI_IMAGE, 18_000, 18_500, 5)
+                auction("Nami Manga Rare", "One Piece", "Single", MARKETPLACE, "moonlight-tcg", NAMI_IMAGE, 18_000, 18_500, 5),
+                auction("Blue-Eyes White Dragon Ghost Rare", "Yu-Gi-Oh!", "Single", MARKETPLACE, "rare-finds", BLUE_EYES_IMAGE, 8_200, 8_750, 7)
         );
 
         for (SeedAuction seed : auctions) {

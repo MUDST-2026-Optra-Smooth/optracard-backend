@@ -21,6 +21,7 @@ public record AuctionResponse(
         String storeName,
         Integer sellerUserId,
         Integer winningUserId,
+        Integer leadingUserId,
         String reviewNote,
         LocalDateTime createdAt
 ) {}
