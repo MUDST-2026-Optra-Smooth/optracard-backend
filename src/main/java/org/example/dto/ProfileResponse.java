@@ -8,5 +8,6 @@ public record ProfileResponse(
         String email,
         String phone,
         String address,
+        String profileImage,
         List<CollectionItemResponse> collection
 ) {}

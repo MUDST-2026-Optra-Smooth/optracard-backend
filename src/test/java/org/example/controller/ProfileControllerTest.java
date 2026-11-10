@@ -54,6 +54,7 @@ class ProfileControllerTest {
                 "new@example.com",
                 "0812345678",
                 "Bangkok",
+                null,
                 List.of(new CollectionItemResponse(101, "Charizard ex", "Pokemon", null, 2L))
         );
         when(profileService.getProfile("new@example.com")).thenReturn(profile);
@@ -73,7 +74,7 @@ class ProfileControllerTest {
 
     @Test
     void updateProfilePassesAuthenticatedEmailAndBodyToService() throws Exception {
-        ProfileResponse profile = new ProfileResponse(7, "updated-user", "updated@example.com", null, null, List.of());
+        ProfileResponse profile = new ProfileResponse(7, "updated-user", "updated@example.com", null, null, null, List.of());
         when(profileService.updateProfile(eq("old@example.com"), any(ProfileUpdateRequest.class)))
                 .thenReturn(new ProfileUpdateResponse(profile, "new-token", "Profile updated successfully"));
 

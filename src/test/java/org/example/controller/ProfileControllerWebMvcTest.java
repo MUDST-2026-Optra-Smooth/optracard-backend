@@ -44,7 +44,7 @@ class ProfileControllerWebMvcTest {
     @Test
     void getProfileSerializesTheServiceResponse() throws Exception {
         when(profileService.getProfile("user@example.com"))
-                .thenReturn(new ProfileResponse(3, "user", "user@example.com", "0812345678", "Bangkok", List.of()));
+                .thenReturn(new ProfileResponse(3, "user", "user@example.com", "0812345678", "Bangkok", null, List.of()));
 
         mockMvc.perform(get("/api/profile")
                         .principal(new UsernamePasswordAuthenticationToken("user@example.com", null, List.of())))
