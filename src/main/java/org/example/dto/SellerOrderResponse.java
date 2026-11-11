@@ -24,5 +24,9 @@ public record SellerOrderResponse(
         Double subtotal,
         String discountCode,
         String discountName,
-        Double discountAmount
+        Double discountAmount,
+        /** Snapshot from the ORDER_CHARGE settlement, null for Official Store orders. */
+        Double marketplaceFeeRate,
+        Double marketplaceFeeAmount,
+        Double sellerNetAmount
 ) {}

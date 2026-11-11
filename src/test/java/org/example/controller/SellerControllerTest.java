@@ -53,7 +53,7 @@ class SellerControllerTest {
         when(authentication.getName()).thenReturn("seller@example.com");
         org.example.dto.SellerOrderResponse order = new org.example.dto.SellerOrderResponse(
                 44, "ORD-44", 30, null, 250.0, "Processing", "PAID", "standard", "Address", "John", "0812345678", null,
-                List.of(), "Store A", 50.0, 200.0, null, null, 0.0
+                List.of(), "Store A", 50.0, 200.0, null, null, 0.0, null, null, null
         );
         when(sellerService.getOrder("seller@example.com", 44)).thenReturn(order);
 
