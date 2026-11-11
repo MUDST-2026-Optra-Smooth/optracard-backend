@@ -57,14 +57,25 @@ if (($health.Content | ConvertFrom-Json).status -ne 'UP') {
 
 $openApi = Invoke-SmokeRequest -Method 'GET' -Path '/v3/api-docs'
 Assert-Status $openApi 200 'OpenAPI endpoint'
-if (-not ($openApi.Content | ConvertFrom-Json).paths.'/api/products/search') {
-    throw 'OpenAPI document did not include the public product search route'
+if (-not ($openApi.Content | ConvertFrom-Json).paths.'/api/products/search' -or -not ($openApi.Content | ConvertFrom-Json).paths.'/api/auctions') {
+    throw 'OpenAPI document did not include required public catalog/search/auction routes'
 }
 
 $catalog = Invoke-SmokeRequest -Method 'GET' -Path '/api/products/catalog?page=0&pageSize=5'
 Assert-Status $catalog 200 'Public catalog endpoint'
 $search = Invoke-SmokeRequest -Method 'GET' -Path '/api/products/search?q=pokemon'
 Assert-Status $search 200 'Public search endpoint'
+$auctions = Invoke-SmokeRequest -Method 'GET' -Path '/api/auctions?status=LIVE'
+Assert-Status $auctions 200 'Public auction endpoint'
+$auctionItems = @($auctions.Content | ConvertFrom-Json)
+if ($auctionItems.Count -gt 0) {
+    $auction = Invoke-SmokeRequest -Method 'GET' -Path "/api/auctions/$($auctionItems[0].id)"
+    Assert-Status $auction 200 'Public auction detail endpoint'
+    $auctionBody = $auction.Content | ConvertFrom-Json
+    if ($null -eq $auctionBody.currentPrice -or [string]::IsNullOrWhiteSpace($auctionBody.status)) {
+        throw 'Public auction detail response did not include price and status fields'
+    }
+}
 
 if ($Email -and $Password) {
     $login = Invoke-SmokeRequest -Method 'POST' -Path '/api/auth/login' -Body @{ email = $Email; password = $Password }
