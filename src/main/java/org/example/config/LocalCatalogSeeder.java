@@ -1,9 +1,13 @@
 package org.example.config;
 
 import org.example.model.CardGame;
+import org.example.model.Auction;
+import org.example.model.AuctionStatus;
 import org.example.model.MarketplaceStore;
 import org.example.model.Order;
 import org.example.model.Product;
+import org.example.model.User;
+import org.example.repository.AuctionRepository;
 import org.example.repository.CardGameRepository;
 import org.example.repository.MarketplaceStoreRepository;
 import org.example.repository.OrderRepository;
@@ -19,6 +23,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /**
  * Local-only catalog data for the home page. Product names and listing sources
@@ -75,6 +81,7 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     private static final Map<String, ProductMetadata> PRODUCT_METADATA = createProductMetadata();
 
     private final ProductRepository productRepository;
+    private final AuctionRepository auctionRepository;
     private final CardGameRepository cardGameRepository;
     private final MarketplaceStoreRepository marketplaceStoreRepository;
     private final OrderRepository orderRepository;
@@ -82,12 +89,14 @@ public class LocalCatalogSeeder implements ApplicationRunner {
 
     public LocalCatalogSeeder(
             ProductRepository productRepository,
+            AuctionRepository auctionRepository,
             CardGameRepository cardGameRepository,
             MarketplaceStoreRepository marketplaceStoreRepository,
             OrderRepository orderRepository,
             UserRepository userRepository
     ) {
         this.productRepository = productRepository;
+        this.auctionRepository = auctionRepository;
         this.cardGameRepository = cardGameRepository;
         this.marketplaceStoreRepository = marketplaceStoreRepository;
         this.orderRepository = orderRepository;
@@ -138,7 +147,56 @@ public class LocalCatalogSeeder implements ApplicationRunner {
         // by the image that matches its pro_name.
         updateProductImages();
         updateProductMetadata();
+        seedLiveAuctions(games, stores);
         markPendingOrdersPaid();
+    }
+
+    /**
+     * Five repeat-safe auction listings make the local storefront demonstrable
+     * without changing any real seller data. Each new listing remains live
+     * for seven days from the local startup that first creates it.
+     */
+    private void seedLiveAuctions(Map<String, CardGame> games, Map<String, MarketplaceStore> stores) {
+        List<User> users = userRepository.findAll();
+        if (users == null || users.isEmpty()) return;
+
+        User officialSeller = users.stream()
+                .filter(user -> "ADMIN".equalsIgnoreCase(user.getRole()) || "SUPER_ADMIN".equalsIgnoreCase(user.getRole()))
+                .findFirst()
+                .orElse(users.get(0));
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Bangkok"));
+
+        List<SeedAuction> auctions = List.of(
+                auction("Charizard ex Special Art", "Pokemon", "Single", OFFICIAL, null, PIKACHU_EX_IMAGE, 2_500, 2_850, 6),
+                auction("Monkey D. Luffy Leader Parallel", "One Piece", "Single", OFFICIAL, null, LUFFY_LEADER_IMAGE, 3_200, 3_450, 4),
+                auction("Dark Magician 25th Anniversary", "Yu-Gi-Oh!", "Single", OFFICIAL, null, DARK_MAGICIAN_IMAGE, 1_800, 1_950, 3),
+                auction("Gengar VMAX Alternate Art", "Pokemon", "Single", MARKETPLACE, "card-corner-bkk", GENGAR_IMAGE, 4_500, 4_850, 8),
+                auction("Nami Manga Rare", "One Piece", "Single", MARKETPLACE, "moonlight-tcg", NAMI_IMAGE, 18_000, 18_500, 5),
+                auction("Blue-Eyes White Dragon Ghost Rare", "Yu-Gi-Oh!", "Single", MARKETPLACE, "rare-finds", BLUE_EYES_IMAGE, 8_200, 8_750, 7)
+        );
+
+        for (SeedAuction seed : auctions) {
+            if (auctionRepository.existsByTitle(seed.title())) continue;
+            MarketplaceStore store = MARKETPLACE.equals(seed.source()) ? stores.get(seed.storeSlug()) : null;
+            if (MARKETPLACE.equals(seed.source()) && store == null) continue;
+
+            Auction auction = new Auction();
+            auction.setSellerUserId(store == null ? officialSeller.getUaId() : store.getSellerUserId());
+            auction.setStore(store);
+            auction.setSource(seed.source());
+            auction.setStatus(AuctionStatus.LIVE.name());
+            auction.setTitle(seed.title());
+            auction.setGameId(games.get(seed.game()).getGameId());
+            auction.setType(seed.type());
+            auction.setImageUrl(seed.imageUrl());
+            auction.setDescription("Local demo auction for " + seed.title() + ".");
+            auction.setStartingPrice(seed.startingPrice());
+            auction.setCurrentPrice(seed.currentPrice());
+            auction.setBidCount(seed.bidCount());
+            auction.setStartsAt(now.minusMinutes(1));
+            auction.setEndsAt(now.plusDays(7));
+            auctionRepository.save(auction);
+        }
     }
 
     /** Local checkout currently simulates payment completion for demo orders. */
@@ -462,6 +520,32 @@ public class LocalCatalogSeeder implements ApplicationRunner {
             String source,
             String storeSlug,
             String description
+    ) {}
+
+    private SeedAuction auction(
+            String title,
+            String game,
+            String type,
+            String source,
+            String storeSlug,
+            String imageUrl,
+            double startingPrice,
+            double currentPrice,
+            int bidCount
+    ) {
+        return new SeedAuction(title, game, type, source, storeSlug, imageUrl, startingPrice, currentPrice, bidCount);
+    }
+
+    private record SeedAuction(
+            String title,
+            String game,
+            String type,
+            String source,
+            String storeSlug,
+            String imageUrl,
+            double startingPrice,
+            double currentPrice,
+            int bidCount
     ) {}
 
     private static Map<String, ProductMetadata> createProductMetadata() {

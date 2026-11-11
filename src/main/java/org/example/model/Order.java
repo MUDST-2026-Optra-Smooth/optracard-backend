@@ -56,6 +56,10 @@ public class Order {
     @Column(name = "ord_source", nullable = false, length = 20)
     private String source = "OFFICIAL";
 
+    /** Present only for an order that was created by an auction checkout. */
+    @Column(name = "auction_id")
+    private Integer auctionId;
+
     @Column(name = "ord_paymethod", length = 100)
     private String paymentMethod;
 

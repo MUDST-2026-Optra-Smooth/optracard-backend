@@ -107,6 +107,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth", "/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/marketplace", "/api/marketplace/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/auctions", "/api/auctions/**").permitAll()
                         
                         .requestMatchers("/api/admin/reports/**").hasAnyAuthority(
                                 "ADMIN", "ROLE_ADMIN", 

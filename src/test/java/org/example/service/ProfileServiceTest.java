@@ -100,7 +100,8 @@ class ProfileServiceTest {
                         "  new@example.com  ",
                         " 0812345678 ",
                         "  New address  ",
-                        "new-password"
+                        "new-password",
+                        "data:image/png;base64,aGVsbG8="
                 )
         );
 
@@ -108,6 +109,7 @@ class ProfileServiceTest {
         assertEquals("new@example.com", user.getEmail());
         assertEquals("0812345678", user.getPhone());
         assertEquals("New address", user.getAddress());
+        assertEquals("data:image/png;base64,aGVsbG8=", user.getProfileImage());
         assertEquals("new-hash", user.getPassword());
         assertEquals("fresh-token", response.token());
         assertEquals("Profile updated successfully", response.message());
@@ -125,7 +127,7 @@ class ProfileServiceTest {
 
         ProfileUpdateResponse response = profileService.updateProfile(
                 "old@example.com",
-                new ProfileUpdateRequest("new-name", "old@example.com", "", "New address", " ")
+                new ProfileUpdateRequest("new-name", "old@example.com", "", "New address", " ", null)
         );
 
         assertEquals("old-hash", user.getPassword());
@@ -145,7 +147,7 @@ class ProfileServiceTest {
                 ResponseStatusException.class,
                 () -> profileService.updateProfile(
                         "old@example.com",
-                        new ProfileUpdateRequest("new-name", "taken@example.com", null, null, null)
+                        new ProfileUpdateRequest("new-name", "taken@example.com", null, null, null, null)
                 )
         );
 
@@ -161,7 +163,7 @@ class ProfileServiceTest {
                 ResponseStatusException.class,
                 () -> profileService.updateProfile(
                         "old@example.com",
-                        new ProfileUpdateRequest(" ", "old@example.com", null, null, null)
+                        new ProfileUpdateRequest(" ", "old@example.com", null, null, null, null)
                 )
         );
 

@@ -54,6 +54,10 @@ class ReportServiceTest {
 
         WeeklyReportResponse response = reportService.generateWeeklyReport(start, end);
 
+        for (Query query : List.of(query1, query2, query3)) {
+            verify(query).setParameter("start", start.atStartOfDay());
+            verify(query).setParameter("end", end.plusDays(1).atStartOfDay());
+        }
         assertNotNull(response);
         assertEquals(new BigDecimal("10000.0"), response.getRevenue());
         assertEquals(new BigDecimal("4000.0"), response.getCost());
@@ -69,22 +73,18 @@ class ReportServiceTest {
     }
 
     @Test
-    @DisplayName("generateWeeklyReport falls back to zero values when an exception is thrown")
-    void generateWeeklyReport_exceptionFallback() {
-        LocalDate start = LocalDate.of(2026, 11, 1);
-        LocalDate end = LocalDate.of(2026, 11, 7);
-
+    void databaseFailureIsNotReportedAsZeroSales() {
         when(entityManager.createNativeQuery(anyString())).thenThrow(new RuntimeException("DB offline"));
+        var error = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+            () -> reportService.generateWeeklyReport(LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 7)));
+        assertEquals(503, error.getStatusCode().value());
+    }
 
-        WeeklyReportResponse response = reportService.generateWeeklyReport(start, end);
-
-        assertNotNull(response);
-        assertEquals(BigDecimal.ZERO, response.getRevenue());
-        assertEquals(BigDecimal.ZERO, response.getCost());
-        assertEquals(BigDecimal.ZERO, response.getProfit());
-        assertEquals(0L, response.getTotalOrders());
-        assertEquals(0L, response.getItemsSold());
-        assertTrue(response.getTopProducts().isEmpty());
+    @Test
+    void rejectsReversedDateRangeBeforeQueryingDatabase() {
+        var error = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+            () -> reportService.generateWeeklyReport(LocalDate.of(2026, 11, 7), LocalDate.of(2026, 11, 1)));
+        assertEquals(400, error.getStatusCode().value());
+        verifyNoInteractions(entityManager);
     }
 }
-

@@ -90,7 +90,8 @@ class UserProfileIntegrationTest {
                 "john.updated@example.com",
                 "0899999999",
                 "456 New City Avenue",
-                null
+                null,
+                "data:image/png;base64,aGVsbG8="
         );
 
         mockMvc.perform(put("/api/profile")
@@ -102,6 +103,7 @@ class UserProfileIntegrationTest {
                 .andExpect(jsonPath("$.profile.email").value("john.updated@example.com"))
                 .andExpect(jsonPath("$.profile.phone").value("0899999999"))
                 .andExpect(jsonPath("$.profile.address").value("456 New City Avenue"))
+                .andExpect(jsonPath("$.profile.profileImage").value("data:image/png;base64,aGVsbG8="))
                 .andExpect(jsonPath("$.token").isString());
 
         // Verify update in the database
@@ -110,5 +112,6 @@ class UserProfileIntegrationTest {
         assertEquals("john.updated@example.com", updated.getEmail());
         assertEquals("0899999999", updated.getPhone());
         assertEquals("456 New City Avenue", updated.getAddress());
+        assertEquals("data:image/png;base64,aGVsbG8=", updated.getProfileImage());
     }
 }

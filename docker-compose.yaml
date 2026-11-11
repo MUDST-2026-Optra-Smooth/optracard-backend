@@ -75,7 +75,9 @@ services:
       - tempo
       - loki
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-production}
+      # Docker Compose is the local development path, so enable the local
+      # catalog/auction fixtures unless an explicit profile is supplied.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-optracard}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:?POSTGRES_USER must be set}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
