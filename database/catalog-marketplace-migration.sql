@@ -132,6 +132,44 @@ CREATE INDEX IF NOT EXISTS ix_orders_user_created
 CREATE INDEX IF NOT EXISTS ix_orders_store_created
     ON orders (ord_store_id, ord_createdate DESC);
 
+-- Marketplace Fee Configuration retains every version so historical seller
+-- settlements keep the rate that was active when they were charged.
+CREATE TABLE IF NOT EXISTS marketplace_fee_configurations (
+    fee_config_id SERIAL PRIMARY KEY,
+    fee_rate DECIMAL(5,2) NOT NULL CHECK (fee_rate >= 0 AND fee_rate <= 100),
+    effective_from TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    changed_by VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO marketplace_fee_configurations (fee_rate, effective_from, changed_by)
+SELECT 5.00, CURRENT_TIMESTAMP, 'system'
+WHERE NOT EXISTS (SELECT 1 FROM marketplace_fee_configurations);
+
+CREATE TABLE IF NOT EXISTS marketplace_settlement_ledger (
+    settlement_id SERIAL PRIMARY KEY,
+    settlement_entry_type VARCHAR(30) NOT NULL CHECK (settlement_entry_type IN ('ORDER_CHARGE', 'AUCTION_CHARGE', 'REVERSAL')),
+    settlement_status VARCHAR(30) NOT NULL DEFAULT 'POSTED',
+    seller_user_id INT NOT NULL,
+    store_id INT NOT NULL,
+    store_name VARCHAR(255) NOT NULL,
+    reference_type VARCHAR(30) NOT NULL CHECK (reference_type IN ('ORDER', 'AUCTION')),
+    reference_id VARCHAR(100) NOT NULL,
+    reference_number VARCHAR(100) NOT NULL,
+    gross_amount DECIMAL(12,2) NOT NULL,
+    fee_rate DECIMAL(5,2) NOT NULL,
+    fee_amount DECIMAL(12,2) NOT NULL,
+    net_amount DECIMAL(12,2) NOT NULL,
+    reversal_of_id INT UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_settlement_charge_reference UNIQUE (settlement_entry_type, reference_type, reference_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_settlement_store_created
+    ON marketplace_settlement_ledger (store_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_settlement_seller_created
+    ON marketplace_settlement_ledger (seller_user_id, created_at DESC);
+
 ALTER TABLE products ADD COLUMN IF NOT EXISTS pro_listing_source VARCHAR(20) DEFAULT 'OFFICIAL';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS store_id INT;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS pro_set VARCHAR(255);

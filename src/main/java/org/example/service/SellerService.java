@@ -9,9 +9,12 @@ import org.example.model.CardGame;
 import org.example.model.MarketplaceStore;
 import org.example.model.Order;
 import org.example.model.Product;
+import org.example.model.MarketplaceSettlementLedger;
+import org.example.model.SettlementEntryType;
 import org.example.model.User;
 import org.example.repository.CardGameRepository;
 import org.example.repository.MarketplaceStoreRepository;
+import org.example.repository.MarketplaceSettlementLedgerRepository;
 import org.example.repository.OrderRepository;
 import org.example.repository.ProductRepository;
 import org.example.repository.UserRepository;
@@ -33,6 +36,8 @@ public class SellerService {
     private final OrderRepository orderRepository;
     private final OrderNotificationService notificationService;
     private final ProductDeletionService productDeletionService;
+    private final MarketplaceSettlementService settlementService;
+    private final MarketplaceSettlementLedgerRepository settlementLedgerRepository;
 
     public SellerService(ProductRepository productRepository,
                          MarketplaceStoreRepository storeRepository,
@@ -40,7 +45,9 @@ public class SellerService {
                          CardGameRepository cardGameRepository,
                          OrderRepository orderRepository,
                          OrderNotificationService notificationService,
-                         ProductDeletionService productDeletionService) {
+                         ProductDeletionService productDeletionService,
+                         MarketplaceSettlementService settlementService,
+                         MarketplaceSettlementLedgerRepository settlementLedgerRepository) {
         this.productRepository = productRepository;
         this.storeRepository = storeRepository;
         this.userRepository = userRepository;
@@ -48,6 +55,8 @@ public class SellerService {
         this.orderRepository = orderRepository;
         this.notificationService = notificationService;
         this.productDeletionService = productDeletionService;
+        this.settlementService = settlementService;
+        this.settlementLedgerRepository = settlementLedgerRepository;
     }
 
     @Transactional(readOnly = true)
@@ -148,6 +157,9 @@ public class SellerService {
         Order order = orderRepository.findByOrderIdAndStoreId(orderId, store.getStoreId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
         boolean shippingNow = "SHIPPED".equals(normalized) && !"SHIPPED".equalsIgnoreCase(order.getStatus());
+        boolean cancelingNow = "CANCELED".equals(normalized)
+                && !"CANCELED".equalsIgnoreCase(order.getStatus())
+                && !"CANCELLED".equalsIgnoreCase(order.getStatus());
         if (shippingNow) {
             order.setTrackingNumber(requireTrackingNumber(trackingNumber));
         }
@@ -155,6 +167,9 @@ public class SellerService {
         Order saved = orderRepository.saveAndFlush(order);
         if (shippingNow) {
             notificationService.createShippingNotification(saved);
+        }
+        if (cancelingNow) {
+            settlementService.recordOrderReversal(saved);
         }
         return toOrderResponse(saved);
     }
@@ -263,6 +278,9 @@ public class SellerService {
                     product == null || product.getCardGame() == null ? "Unknown" : product.getCardGame().getGameName(),
                     product == null ? null : product.getProImageUrl(), item.getPrice(), item.getQuantity(), order.getStoreName());
         }).toList();
+        MarketplaceSettlementLedger settlement = settlementLedgerRepository
+                .findByEntryTypeAndReferenceTypeAndReferenceId(SettlementEntryType.ORDER_CHARGE, "ORDER", String.valueOf(order.getOrderId()))
+                .orElse(null);
         return new SellerOrderResponse(order.getOrderId(), orderNumber(order), order.getUserId(), order.getCreatedAt(),
                 order.getTotalPrice(), displayStatus(order.getStatus()), order.getPaymentStatus(), order.getShippingMethod(),
                 order.getShippingAddress(), order.getRecipientName(), order.getRecipientPhone(), order.getTrackingNumber(), items,
@@ -271,7 +289,10 @@ public class SellerService {
                         ? items.stream().mapToDouble(item -> (item.price() == null ? 0d : item.price()) * (item.quantity() == null ? 0 : item.quantity())).sum()
                         : order.getSubtotal(),
                 order.getPromotionCode(), order.getPromotionName(),
-                order.getDiscountAmount() == null ? 0d : order.getDiscountAmount());
+                order.getDiscountAmount() == null ? 0d : order.getDiscountAmount(),
+                settlement == null || settlement.getFeeRate() == null ? null : settlement.getFeeRate().doubleValue(),
+                settlement == null || settlement.getFeeAmount() == null ? null : settlement.getFeeAmount().doubleValue(),
+                settlement == null || settlement.getNetAmount() == null ? null : settlement.getNetAmount().doubleValue());
     }
 
     private String orderNumber(Order order) {

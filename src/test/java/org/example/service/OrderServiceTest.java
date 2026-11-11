@@ -42,6 +42,9 @@ class OrderServiceTest {
     @Mock
     private PromotionService promotionService;
 
+    @Mock
+    private MarketplaceSettlementService settlementService;
+
     private OrderService orderService;
     private Product officialProduct;
     private Product marketplaceProduct;
@@ -50,7 +53,7 @@ class OrderServiceTest {
 
     @BeforeEach
     void setUp() {
-        orderService = new OrderService(orderRepository, cartRepository, productRepository, promotionService);
+        orderService = new OrderService(orderRepository, cartRepository, productRepository, promotionService, settlementService);
         officialProduct = product(10, "Official card", 100d, "OFFICIAL", null);
 
         MarketplaceStore seller = new MarketplaceStore();
@@ -127,6 +130,7 @@ class OrderServiceTest {
         assertEquals(4, marketplaceProduct.getProQuantity());
         assertEquals(0, cart.getItems().size());
         verify(orderRepository, times(2)).saveAndFlush(any(Order.class));
+        verify(settlementService).recordOrderCharge(marketplaceOrder);
     }
 
     @Test

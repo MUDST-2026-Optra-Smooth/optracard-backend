@@ -37,13 +37,15 @@ public class OrderService {
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
     private final PromotionService promotionService;
+    private final MarketplaceSettlementService settlementService;
 
     public OrderService(OrderRepository orderRepository, CartRepository cartRepository, ProductRepository productRepository,
-                        PromotionService promotionService) {
+                        PromotionService promotionService, MarketplaceSettlementService settlementService) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
         this.productRepository = productRepository;
         this.promotionService = promotionService;
+        this.settlementService = settlementService;
     }
 
     /**
@@ -125,7 +127,11 @@ public class OrderService {
             order.setPromotionName(promotion.name());
             order.setDiscountAmount(orderDiscount);
             order.setTotalPrice(money(itemsTotal - orderDiscount + number(order.getShippingFee())));
-            placedOrders.add(toResponse(orderRepository.saveAndFlush(order)));
+            Order savedOrder = orderRepository.saveAndFlush(order);
+            // The checkout simulation marks orders PAID. Settlement is created
+            // in the same transaction and ignores Official Store orders.
+            settlementService.recordOrderCharge(savedOrder);
+            placedOrders.add(toResponse(savedOrder));
         }
 
         cart.getItems().clear();
