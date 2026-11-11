@@ -10,7 +10,9 @@ import jakarta.persistence.Query;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
+import java.time.LocalDateTime;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,20 +25,22 @@ public class ReportService {
     @PersistenceContext
     private EntityManager entityManager;
 
-    private static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     public WeeklyReportResponse generateWeeklyReport(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid date range");
+        }
         try {
-            String startStr = startDate.atStartOfDay().format(DATETIME_FORMATTER);
-            String endStr = endDate.atTime(23, 59, 59).format(DATETIME_FORMATTER);
+            LocalDateTime start = startDate.atStartOfDay();
+            LocalDateTime endExclusive = endDate.plusDays(1).atStartOfDay();
 
             Query query1 = entityManager.createNativeQuery(
                 "SELECT COALESCE(SUM(o.ord_total_price), 0), COUNT(o.ord_id) " +
                 "FROM orders o " +
-                "WHERE o.ord_createdate BETWEEN CAST(:start AS TIMESTAMP) AND CAST(:end AS TIMESTAMP)"
+                "WHERE o.ord_createdate >= :start AND o.ord_createdate < :end"
             )
-            .setParameter("start", startStr + " 00:00:00")
-            .setParameter("end", endStr + " 23:59:59");
+            .setParameter("start", start)
+            .setParameter("end", endExclusive);
 
             Object[] orderStats = getSingleRow(query1);
             BigDecimal revenue = parseBigDecimal(orderStats[0]);
@@ -48,10 +52,10 @@ public class ReportService {
                 "FROM orderitems oi " +
                 "JOIN products p ON oi.pro_id = p.pro_id " +
                 "JOIN orders o ON oi.ord_id = o.ord_id " +
-                "WHERE o.ord_createdate BETWEEN CAST(:start AS TIMESTAMP) AND CAST(:end AS TIMESTAMP)"
+                "WHERE o.ord_createdate >= :start AND o.ord_createdate < :end"
             )
-            .setParameter("start", startStr + " 00:00:00")
-            .setParameter("end", endStr + " 23:59:59");
+            .setParameter("start", start)
+            .setParameter("end", endExclusive);
 
             Object[] itemStats = getSingleRow(query2);
             BigDecimal cost = parseBigDecimal(itemStats[0]);
@@ -68,13 +72,13 @@ public class ReportService {
                 "FROM orderitems oi " +
                 "JOIN products p ON oi.pro_id = p.pro_id " +
                 "JOIN orders o ON oi.ord_id = o.ord_id " +
-                "WHERE o.ord_createdate BETWEEN CAST(:start AS TIMESTAMP) AND CAST(:end AS TIMESTAMP) " +
+                "WHERE o.ord_createdate >= :start AND o.ord_createdate < :end " +
                 "GROUP BY p.pro_id, p.pro_name, p.pro_quantity " +
                 "ORDER BY qty DESC " +
                 "LIMIT 5"
             )
-            .setParameter("start", startStr + " 00:00:00")
-            .setParameter("end", endStr + " 23:59:59")
+            .setParameter("start", start)
+            .setParameter("end", endExclusive)
             .getResultList();
 
             List<WeeklyReportResponse.TopProductDto> topProducts = new ArrayList<>();
@@ -115,24 +119,13 @@ public class ReportService {
             return new WeeklyReportResponse(revenue, cost, profit, totalOrders, itemsSold, topProducts);
 
         } catch (Exception e) {
-            log.warn("Failed to generate weekly report: {}", e.getMessage());
-            return new WeeklyReportResponse(
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0L, 0L, new ArrayList<>()
-            );
+            log.error("Failed to generate weekly report", e);
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Unable to load weekly report", e);
         }
     }
 
     private Object[] getSingleRow(Query query) {
-        try {
-            Object result = query.getSingleResult();
-            if (result instanceof Object[]) {
-                return (Object[]) result;
-            } else if (result != null) {
-                return new Object[]{result, 0};
-            }
-        } catch (Exception e) {
-        }
-        return new Object[]{0, 0};
+        return (Object[]) query.getSingleResult();
     }
 
     private BigDecimal parseBigDecimal(Object obj) {
