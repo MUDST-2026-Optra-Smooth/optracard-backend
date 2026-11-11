@@ -1,3 +1,9 @@
 package org.example.dto;
 
-public record StockAlertSettingsResponse(int defaultThreshold) {}
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(description = "Configured low stock alert threshold settings")
+public record StockAlertSettingsResponse(
+        @Schema(description = "Active low stock threshold", example = "5")
+        int defaultThreshold
+) {}
