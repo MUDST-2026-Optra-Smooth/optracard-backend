@@ -50,6 +50,8 @@ class OrderServiceTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient().when(productRepository.findByIdForUpdate(org.mockito.ArgumentMatchers.anyInt()))
+            .thenAnswer(i->productRepository.findById(i.getArgument(0)));
         orderService = new OrderService(orderRepository, cartRepository, productRepository, promotionService);
         officialProduct = product(10, "Official card", 100d, "OFFICIAL", null);
 
