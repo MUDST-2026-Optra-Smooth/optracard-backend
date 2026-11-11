@@ -14,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -135,6 +136,27 @@ class SecurityRbacIntegrationTest {
     void forgedToken_rejected() throws Exception {
         mockMvc.perform(get("/api/profile")
                         .header("Authorization", "Bearer invalid.forged.jwt.token"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Auction mutations deny anonymous and wrong-role callers before service access")
+    void auctionMutationRbac_isEnforced() throws Exception {
+        mockMvc.perform(post("/api/auctions/1/bids")
+                        .contentType("application/json")
+                        .content("{\"amount\":1000}"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/seller/auctions")
+                        .header("Authorization", userToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/admin/auctions")
+                        .header("Authorization", sellerToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/superadmin/settlements")
+                        .header("Authorization", adminToken))
                 .andExpect(status().isForbidden());
     }
 }
