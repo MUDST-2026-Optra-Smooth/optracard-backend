@@ -18,6 +18,11 @@ class OpenAPIConfigTest {
         assertEquals("Optracard API Documentation", openAPI.getInfo().getTitle());
         assertEquals("1.0.0", openAPI.getInfo().getVersion());
 
+        assertNotNull(openAPI.getServers());
+        assertEquals(2, openAPI.getServers().size());
+        assertEquals("http://localhost:8080", openAPI.getServers().get(0).getUrl());
+        assertEquals("http://localhost:30081", openAPI.getServers().get(1).getUrl());
+
         assertNotNull(openAPI.getComponents());
         assertNotNull(openAPI.getComponents().getSecuritySchemes());
         SecurityScheme bearerScheme = openAPI.getComponents().getSecuritySchemes().get("bearerAuth");
