@@ -34,7 +34,10 @@ import org.springframework.dao.DataIntegrityViolationException;
 @SpringBootTest(properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect",
-        "spring.datasource.driver-class-name=org.postgresql.Driver"
+        "spring.datasource.driver-class-name=org.postgresql.Driver",
+        // This contract test starts the complete application context without the
+        // test profile, so it must supply the required security property itself.
+        "jwt.secret=test-secret-key-that-is-long-enough-for-hs256-signing-optracard-2026"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Testcontainers(disabledWithoutDocker = true)
