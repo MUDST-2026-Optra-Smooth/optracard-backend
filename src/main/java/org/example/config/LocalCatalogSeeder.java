@@ -37,6 +37,9 @@ public class LocalCatalogSeeder implements ApplicationRunner {
 
     private static final String OFFICIAL = "OFFICIAL";
     private static final String MARKETPLACE = "MARKETPLACE";
+    // BCrypt hash for the local-only demo password "password". This is used
+    // exclusively by the local Spring profile and never by deployed profiles.
+    private static final String LOCAL_DEMO_PASSWORD_HASH = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 
     // Product images are hosted by the retailers/card catalogs returned from
     // the web image search. They are used only for local demo catalog data.
@@ -107,6 +110,7 @@ public class LocalCatalogSeeder implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         Map<String, CardGame> games = seedGames();
+        seedDemoSellers();
         Map<String, MarketplaceStore> stores = seedStores();
         reassignLegacyShuffleHouseListings(stores.get("rare-finds"));
 
@@ -377,6 +381,40 @@ public class LocalCatalogSeeder implements ApplicationRunner {
         addStoreForExistingSeller(stores, "moonlight.demo@optracard.local", "Moonlight TCG", "moonlight-tcg", "Collector cards and sealed products.");
         addStoreForExistingSeller(stores, "rarefinds.demo@optracard.local", "Rare Finds TCG", "rare-finds", "Curated cards for serious collectors.");
         return stores;
+    }
+
+    /**
+     * Marketplace listings need an approved store, and an approved store needs
+     * a seller account. Local databases start empty, so create the four demo
+     * sellers before their stores and products are seeded. This method is
+     * idempotent and is available only while the {@code local} profile is on.
+     */
+    private void seedDemoSellers() {
+        getOrCreateDemoSeller("seller.demo@optracard.local", "aaa_trading_demo", "0810000001");
+        getOrCreateDemoSeller("cardcorner.demo@optracard.local", "card_corner_demo", "0810000002");
+        getOrCreateDemoSeller("moonlight.demo@optracard.local", "moonlight_tcg_demo", "0810000003");
+        getOrCreateDemoSeller("rarefinds.demo@optracard.local", "rare_finds_demo", "0810000004");
+    }
+
+    private User getOrCreateDemoSeller(String email, String username, String phone) {
+        return userRepository.findByEmail(email).map(user -> {
+            // These reserved .local accounts are demo sellers. Correct an old
+            // local record so its approved store can always be seeded.
+            if (!"SELLER".equalsIgnoreCase(user.getRole())) {
+                user.setRole("SELLER");
+                return userRepository.save(user);
+            }
+            return user;
+        }).orElseGet(() -> {
+            User seller = new User();
+            seller.setUsername(username);
+            seller.setEmail(email);
+            seller.setPassword(LOCAL_DEMO_PASSWORD_HASH);
+            seller.setRole("SELLER");
+            seller.setPhone(phone);
+            seller.setAddress("Bangkok, Thailand");
+            return userRepository.save(seller);
+        });
     }
 
     private void addStoreForExistingSeller(

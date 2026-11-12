@@ -17,8 +17,11 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -44,6 +47,9 @@ class LocalCatalogSeederTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private AuctionRepository auctionRepository;
 
     @InjectMocks
     private LocalCatalogSeeder seeder;
@@ -91,5 +97,49 @@ class LocalCatalogSeederTest {
         assertEquals("PAID", pendingOrder.getPaymentStatus());
         verify(orderRepository).saveAll(List.of(pendingOrder));
         verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
+    @DisplayName("Should create local demo sellers and approved marketplace stores when the database is empty")
+    void run_whenLocalDatabaseHasNoDemoUsers_createsApprovedMarketplaceStores() {
+        Map<String, User> persistedUsers = new HashMap<>();
+        when(userRepository.findByEmail(anyString())).thenAnswer(invocation ->
+                Optional.ofNullable(persistedUsers.get(invocation.getArgument(0))));
+        AtomicInteger userId = new AtomicInteger(10);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User seller = invocation.getArgument(0);
+            if (seller.getUaId() == null) {
+                seller.setUaId(userId.getAndIncrement());
+            }
+            persistedUsers.put(seller.getEmail(), seller);
+            return seller;
+        });
+        when(userRepository.findAll()).thenReturn(Collections.emptyList());
+        when(marketplaceStoreRepository.findByStoreSlug(anyString())).thenReturn(Optional.empty());
+        AtomicInteger storeId = new AtomicInteger(100);
+        when(marketplaceStoreRepository.save(any(MarketplaceStore.class))).thenAnswer(invocation -> {
+            MarketplaceStore store = invocation.getArgument(0);
+            if (store.getStoreId() == null) {
+                store.setStoreId(storeId.getAndIncrement());
+            }
+            return store;
+        });
+        when(productRepository.existsByProNameAndListingSource(anyString(), anyString())).thenReturn(true);
+        when(productRepository.existsByProNameAndListingSourceAndStore_StoreId(anyString(), anyString(), anyInt())).thenReturn(true);
+        when(productRepository.findAll()).thenReturn(Collections.emptyList());
+        when(productRepository.findByListingSourceOrderByProIdDesc(anyString())).thenReturn(Collections.emptyList());
+        when(orderRepository.findAll()).thenReturn(Collections.emptyList());
+
+        seeder.run(null);
+
+        var sellerCaptor = org.mockito.ArgumentCaptor.forClass(User.class);
+        verify(userRepository, times(4)).save(sellerCaptor.capture());
+        assertEquals(List.of("SELLER", "SELLER", "SELLER", "SELLER"),
+                sellerCaptor.getAllValues().stream().map(User::getRole).toList());
+
+        var storeCaptor = org.mockito.ArgumentCaptor.forClass(MarketplaceStore.class);
+        verify(marketplaceStoreRepository, times(4)).save(storeCaptor.capture());
+        assertEquals(List.of("APPROVED", "APPROVED", "APPROVED", "APPROVED"),
+                storeCaptor.getAllValues().stream().map(MarketplaceStore::getStoreStatus).toList());
     }
 }
