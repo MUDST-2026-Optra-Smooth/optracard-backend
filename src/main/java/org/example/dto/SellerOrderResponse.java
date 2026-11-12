@@ -61,5 +61,14 @@ public record SellerOrderResponse(
         String discountName,
 
         @Schema(description = "Discount amount deducted", example = "100.00")
-        Double discountAmount
+        Double discountAmount,
+
+        @Schema(description = "Marketplace fee rate snapshot from the ORDER_CHARGE settlement; null for Official Store orders", example = "0.05")
+        Double marketplaceFeeRate,
+
+        @Schema(description = "Marketplace fee amount snapshot from the ORDER_CHARGE settlement; null for Official Store orders", example = "52.50")
+        Double marketplaceFeeAmount,
+
+        @Schema(description = "Seller net amount after marketplace fee; null for Official Store orders", example = "997.50")
+        Double sellerNetAmount
 ) {}

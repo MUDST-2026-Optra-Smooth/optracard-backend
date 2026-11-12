@@ -33,3 +33,44 @@ jobs:
             target/surefire-reports/
           if-no-files-found: error
           retention-days: 14
+
+  staging-resettable-auction:
+    name: Staging resettable auction journey
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check staging write configuration
+        id: staging
+        env:
+          API_URL: ${{ secrets.STAGING_BACKEND_API_URL }}
+          ENABLE_WRITES: ${{ secrets.STAGING_E2E_ENABLE_WRITES }}
+          SELLER_EMAIL: ${{ secrets.STAGING_E2E_SELLER_EMAIL }}
+          SELLER_PASSWORD: ${{ secrets.STAGING_E2E_SELLER_PASSWORD }}
+          ADMIN_EMAIL: ${{ secrets.STAGING_E2E_ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.STAGING_E2E_ADMIN_PASSWORD }}
+          BUYER_EMAIL: ${{ secrets.STAGING_E2E_BUYER_EMAIL }}
+          BUYER_PASSWORD: ${{ secrets.STAGING_E2E_BUYER_PASSWORD }}
+        run: |
+          if [ "$ENABLE_WRITES" = "true" ] && [ -n "$API_URL" ] && [ -n "$SELLER_EMAIL" ] && [ -n "$SELLER_PASSWORD" ] && [ -n "$ADMIN_EMAIL" ] && [ -n "$ADMIN_PASSWORD" ] && [ -n "$BUYER_EMAIL" ] && [ -n "$BUYER_PASSWORD" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Resettable staging credentials are not fully configured; write journey is skipped."
+          fi
+      - name: Run staging seller/admin/buyer auction journey
+        if: steps.staging.outputs.enabled == 'true'
+        env:
+          API_URL: ${{ secrets.STAGING_BACKEND_API_URL }}
+          SELLER_EMAIL: ${{ secrets.STAGING_E2E_SELLER_EMAIL }}
+          SELLER_PASSWORD: ${{ secrets.STAGING_E2E_SELLER_PASSWORD }}
+          ADMIN_EMAIL: ${{ secrets.STAGING_E2E_ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.STAGING_E2E_ADMIN_PASSWORD }}
+          BUYER_EMAIL: ${{ secrets.STAGING_E2E_BUYER_EMAIL }}
+          BUYER_PASSWORD: ${{ secrets.STAGING_E2E_BUYER_PASSWORD }}
+        run: >
+          pwsh -File scripts/staging-auction-e2e.ps1
+          -ApiBaseUrl "$API_URL"
+          -SellerEmail "$SELLER_EMAIL" -SellerPassword "$SELLER_PASSWORD"
+          -AdminEmail "$ADMIN_EMAIL" -AdminPassword "$ADMIN_PASSWORD"
+          -BuyerEmail "$BUYER_EMAIL" -BuyerPassword "$BUYER_PASSWORD"
+          -RunId "${{ github.run_id }}"
