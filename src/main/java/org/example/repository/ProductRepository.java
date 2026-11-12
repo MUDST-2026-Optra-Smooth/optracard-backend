@@ -17,6 +17,10 @@ import java.util.Optional;
 
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Integer>, JpaSpecificationExecutor<Product> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Product p where p.proId = :id")
+    Optional<Product> findByIdForUpdate(@Param("id") Integer id);
+
 
     @Override
     @EntityGraph(attributePaths = {"cardGame", "store"})

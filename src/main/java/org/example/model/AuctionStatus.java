@@ -1,6 +1,7 @@
 package org.example.model;
 
 public enum AuctionStatus {
+    SUSPENDED,
     DRAFT,
     PENDING_REVIEW,
     SCHEDULED,
