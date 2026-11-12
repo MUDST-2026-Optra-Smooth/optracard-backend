@@ -24,6 +24,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Value("${app.rate-limit.enabled:false}")
     private boolean enabled;
 
+    @Value("${app.auction.rate-limit.enabled:true}")
+    private boolean auctionEnabled;
+
+    private boolean isAuctionBid(HttpServletRequest request) {
+        return "POST".equalsIgnoreCase(request.getMethod()) && request.getRequestURI().matches("/api/auctions/[0-9]+/bids");
+    }
+
     // เก็บข้อมูล Bucket ของแต่ละ IP
     private final Map<String, Bucket> cache = new ConcurrentHashMap<>();
 
@@ -37,7 +44,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        if (!enabled) {
+        if (!enabled && !(auctionEnabled && isAuctionBid(request))) {
             return true;
         }
         // Browser CORS preflight requests are not application requests and
@@ -60,8 +67,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
         // The storefront loads the catalog on Home, list, and navigation
         // pages. Give that read-only public endpoint its own, higher bucket
         // so ordinary authenticated actions cannot make Home fail with 429.
-        String bucketKey = ip + (isPublicCatalogRead ? ":catalog" : ":api");
-        int capacity = isPublicCatalogRead ? 300 : 50;
+        boolean auctionBid = isAuctionBid(request);
+        String bucketKey = ip + (auctionBid ? ":auction-bids" : isPublicCatalogRead ? ":catalog" : ":api");
+        int capacity = auctionBid ? 30 : isPublicCatalogRead ? 300 : 50;
         Bucket bucket = cache.computeIfAbsent(bucketKey, k -> createNewBucket(capacity));
 
         // ตรวจสอบว่าโควต้ายังเหลือหรือไม่

@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -45,6 +46,13 @@ public class AuctionService {
     private static final Duration MAX_DURATION = Duration.ofDays(7);
     private static final Duration CHECKOUT_WINDOW = Duration.ofHours(24);
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private AuctionOperationsService operations;
+    @org.springframework.beans.factory.annotation.Autowired
+    private AuctionInventoryService inventory;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+    private final Clock clock;
     private final AuctionRepository auctionRepository;
     private final AuctionBidRepository bidRepository;
     private final MarketplaceStoreRepository storeRepository;
@@ -52,12 +60,20 @@ public class AuctionService {
     private final UserRepository userRepository;
     private final OrderRepository orderRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public AuctionService(AuctionRepository auctionRepository,
                           AuctionBidRepository bidRepository,
                           MarketplaceStoreRepository storeRepository,
                           CardGameRepository cardGameRepository,
                           UserRepository userRepository,
                           OrderRepository orderRepository) {
+        this(auctionRepository, bidRepository, storeRepository, cardGameRepository, userRepository, orderRepository, Clock.system(BANGKOK));
+    }
+
+    AuctionService(AuctionRepository auctionRepository, AuctionBidRepository bidRepository,
+                   MarketplaceStoreRepository storeRepository, CardGameRepository cardGameRepository,
+                   UserRepository userRepository, OrderRepository orderRepository, Clock clock) {
+        this.clock = clock;
         this.auctionRepository = auctionRepository;
         this.bidRepository = bidRepository;
         this.storeRepository = storeRepository;
@@ -97,6 +113,26 @@ public class AuctionService {
     }
 
     @Transactional(readOnly = true)
+    public List<AuctionResponse> myAuctions(String email) {
+        User user=currentUser(email);requireBidder(user);
+        return auctionRepository.findAllByOrderByCreatedAtDesc().stream()
+            .filter(a->bidRepository.findFirstByAuction_AuctionIdAndBidderUserId(a.getAuctionId(),user.getUaId()).isPresent())
+            .map(this::toResponse).toList();
+    }
+
+    @Transactional
+    public AuctionResponse moderate(String email,Integer id,String action,String reason) {
+        User actor=currentUser(email);
+        if(!"SUPER_ADMIN".equals(roleOf(actor)))throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        String note=require(reason,"A moderation reason is required");
+        Auction a=auctionRepository.findByIdForUpdate(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if(List.of("AWAITING_CHECKOUT","COMPLETED").contains(a.getStatus()))throw new ResponseStatusException(HttpStatus.CONFLICT,"Winner orders require dispute review before intervention");
+        if(!List.of("CLOSE","SUSPEND").contains(action))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Choose CLOSE or SUSPEND");
+        String before=snapshot(a);a.setStatus("CLOSE".equals(action)?"CLOSED":"SUSPENDED");a.setReviewNote(note);a.setUpdatedAt(now());
+        return saved(a,actor.getUaId(),"ADMIN_CANCEL",before);
+    }
+
+    @Transactional(readOnly = true)
     public List<AuctionResponse> sellerAuctions(String email) {
         User user = currentUser(email);
         return auctionRepository.findBySellerUserIdOrderByCreatedAtDesc(user.getUaId()).stream()
@@ -114,7 +150,7 @@ public class AuctionService {
         auction.setSource("MARKETPLACE");
         auction.setStatus(AuctionStatus.DRAFT.name());
         apply(auction, request);
-        return toResponse(auctionRepository.saveAndFlush(auction));
+        return saved(auction,seller.getUaId(),"CREATE","");
     }
 
     @Transactional
@@ -122,11 +158,11 @@ public class AuctionService {
         User seller = currentUser(email);
         requireRole(seller, "SELLER");
         Auction auction = requireOwnedAuction(seller, auctionId);
+        String before = snapshot(auction);
         AuctionStatus status = statusOf(auction);
-        if (!List.of(AuctionStatus.DRAFT, AuctionStatus.PENDING_REVIEW, AuctionStatus.REJECTED, AuctionStatus.LIVE).contains(status)
-                || (status == AuctionStatus.LIVE && auction.getBidCount() > 0)) {
+        if (!List.of(AuctionStatus.DRAFT, AuctionStatus.PENDING_REVIEW, AuctionStatus.REJECTED).contains(status)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "This auction can no longer be edited because bidding has started or it has ended");
+                    "Only a draft, pending review or rejected auction can be edited");
         }
         apply(auction, request);
         // Any edit after the seller submitted the listing needs another review.
@@ -134,7 +170,7 @@ public class AuctionService {
             auction.setStatus(AuctionStatus.PENDING_REVIEW.name());
             auction.setReviewNote(null);
         }
-        return toResponse(auctionRepository.saveAndFlush(auction));
+        return saved(auction,seller.getUaId(),"EDIT",before);
     }
 
     @Transactional
@@ -142,13 +178,15 @@ public class AuctionService {
         User seller = currentUser(email);
         requireRole(seller, "SELLER");
         Auction auction = requireOwnedAuction(seller, auctionId);
+        String before = snapshot(auction);
         if (!List.of(AuctionStatus.DRAFT, AuctionStatus.REJECTED).contains(statusOf(auction))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only a draft or rejected auction can be submitted");
         }
         validateTiming(auction.getStartsAt(), auction.getEndsAt());
+        if(inventory!=null) inventory.reserve(auction);
         auction.setStatus(AuctionStatus.PENDING_REVIEW.name());
         auction.setReviewNote(null);
-        return toResponse(auctionRepository.saveAndFlush(auction));
+        return saved(auction,seller.getUaId(),"SUBMIT",before);
     }
 
     @Transactional
@@ -156,14 +194,15 @@ public class AuctionService {
         User seller = currentUser(email);
         requireRole(seller, "SELLER");
         Auction auction = requireOwnedAuction(seller, auctionId);
+        String before = snapshot(auction);
         AuctionStatus status = statusOf(auction);
-        if (!(status == AuctionStatus.DRAFT || status == AuctionStatus.PENDING_REVIEW
+        if (!(List.of(AuctionStatus.DRAFT,AuctionStatus.PENDING_REVIEW,AuctionStatus.REJECTED,AuctionStatus.SCHEDULED).contains(status)
                 || (status == AuctionStatus.LIVE && auction.getBidCount() == 0))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This auction can no longer be cancelled");
         }
         auction.setStatus(AuctionStatus.CANCELLED.name());
         auction.setUpdatedAt(now());
-        return toResponse(auctionRepository.saveAndFlush(auction));
+        return saved(auction,seller.getUaId(),"SELLER_CANCEL",before);
     }
 
     @Transactional
@@ -180,7 +219,7 @@ public class AuctionService {
         replacement.setSource(previous.getSource());
         replacement.setStatus(AuctionStatus.DRAFT.name());
         apply(replacement, request);
-        return toResponse(auctionRepository.saveAndFlush(replacement));
+        return saved(replacement,seller.getUaId(),"RELIST","");
     }
 
     @Transactional(readOnly = true)
@@ -199,35 +238,39 @@ public class AuctionService {
         auction.setSource("OFFICIAL");
         apply(auction, request);
         validateTiming(auction.getStartsAt(), auction.getEndsAt());
+        if(inventory!=null) inventory.reserve(auction);
         auction.setStatus(auction.getStartsAt().isAfter(now()) ? AuctionStatus.SCHEDULED.name() : AuctionStatus.LIVE.name());
-        return toResponse(auctionRepository.saveAndFlush(auction));
+        return saved(auction,admin.getUaId(),"CREATE_OFFICIAL","");
     }
 
     @Transactional
     public AuctionResponse reviewAuction(String email, Integer auctionId, boolean approved, String note) {
         User admin = currentUser(email);
         requireAdmin(admin);
-        Auction auction = findAuction(auctionId);
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Auction not found"));
+        String before = snapshot(auction);
         if (!"MARKETPLACE".equalsIgnoreCase(auction.getSource()) || statusOf(auction) != AuctionStatus.PENDING_REVIEW) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This marketplace auction is not waiting for review");
         }
         if (!approved) {
             auction.setStatus(AuctionStatus.REJECTED.name());
-            auction.setReviewNote(blankToNull(note));
+            auction.setReviewNote(require(note,"A rejection reason is required"));
         } else {
             validateTiming(auction.getStartsAt(), auction.getEndsAt());
+            if(inventory!=null) inventory.reserve(auction);
             auction.setStatus(auction.getStartsAt().isAfter(now()) ? AuctionStatus.SCHEDULED.name() : AuctionStatus.LIVE.name());
             auction.setReviewNote(null);
         }
         auction.setUpdatedAt(now());
-        return toResponse(auctionRepository.saveAndFlush(auction));
+        return saved(auction,admin.getUaId(),(approved ? "APPROVE" : "REJECT"),before);
     }
 
     @Transactional
     public AuctionResponse cancelByAdmin(String email, Integer auctionId, String note) {
         User admin = currentUser(email);
         requireAdmin(admin);
-        Auction auction = findAuction(auctionId);
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Auction not found"));
+        String before = snapshot(auction);
         if (List.of(AuctionStatus.AWAITING_CHECKOUT, AuctionStatus.COMPLETED).contains(statusOf(auction))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "An auction cannot be cancelled after a winner is selected");
         }
@@ -239,14 +282,15 @@ public class AuctionService {
         }
         auction.setStatus(AuctionStatus.CANCELLED.name());
         auction.setUpdatedAt(now());
-        return toResponse(auctionRepository.saveAndFlush(auction));
+        return saved(auction,admin.getUaId(),"ADMIN_CANCEL",before);
     }
 
     @Transactional
     public AuctionBidResponse placeBid(String email, Integer auctionId, AuctionBidRequest request) {
         User bidder = currentUser(email);
         requireBidder(bidder);
-        if (request == null || request.amount() == null) {
+        if(operations!=null)operations.requireAllowedBidder(bidder.getUaId());
+        if (request == null || request.amount() == null || !Double.isFinite(request.amount()) || request.amount() <= 0 || request.amount()>1000000000d || java.math.BigDecimal.valueOf(request.amount()).stripTrailingZeros().scale()>2) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A bid amount is required");
         }
         Auction auction = auctionRepository.findByIdForUpdate(auctionId)
@@ -258,11 +302,12 @@ public class AuctionService {
         if (Objects.equals(auction.getSellerUserId(), bidder.getUaId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot bid on your own auction");
         }
-        double required = auction.getBidCount() == 0 ? auction.getStartingPrice() : auction.getCurrentPrice() + MINIMUM_INCREMENT;
+        double required = auction.getBidCount() == 0 ? auction.getStartingPrice() : auction.getCurrentPrice() + increment(auction);
         if (request.amount() < required) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     String.format(Locale.US, "Your bid must be at least %.2f", required));
         }
+        Integer previousLeader = bidRepository.findFirstByAuction_AuctionIdOrderByAmountDescCreatedAtAsc(auctionId).map(AuctionBid::getBidderUserId).orElse(null);
         LocalDateTime bidTime = now();
         AuctionBid bid = new AuctionBid();
         bid.setAuction(auction);
@@ -273,11 +318,13 @@ public class AuctionService {
         bidRepository.save(bid);
         auction.setCurrentPrice(bid.getAmount());
         auction.setBidCount(auction.getBidCount() + 1);
-        if (!bidTime.isBefore(auction.getEndsAt().minusMinutes(5))) {
-            auction.setEndsAt(auction.getEndsAt().plusMinutes(5));
+        if (antiSniping(auction) > 0 && !bidTime.isBefore(auction.getEndsAt().minusMinutes(antiSniping(auction)))) {
+            auction.setEndsAt(auction.getEndsAt().plusMinutes(antiSniping(auction)));
         }
         auction.setUpdatedAt(bidTime);
         auctionRepository.saveAndFlush(auction);
+        if(operations!=null && previousLeader!=null && !previousLeader.equals(bidder.getUaId()))
+            operations.notify(previousLeader,auctionId,"OUTBID","You have been outbid on "+auction.getTitle(),"outbid:"+auctionId+":"+auction.getBidCount()+":"+previousLeader);
         return toBidResponse(bid);
     }
 
@@ -317,55 +364,76 @@ public class AuctionService {
         auction.setStatus(AuctionStatus.COMPLETED.name());
         auction.setUpdatedAt(now());
         auctionRepository.saveAndFlush(auction);
-        return toResponse(auction);
+        return saved(auction,winner.getUaId(),"CHECKOUT","");
     }
 
     @Scheduled(fixedDelay = 30_000)
-    @Transactional
     public void advanceAuctionLifecycle() {
         LocalDateTime current = now();
-        List<Auction> changed = auctionRepository.findAllByOrderByCreatedAtDesc().stream()
-                .filter(auction -> advanceOne(auction, current))
-                .toList();
-        if (!changed.isEmpty()) auctionRepository.saveAll(changed);
+        // Requests and the lifecycle job must lock the same current database rows.
+        auctionRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(Auction::getAuctionId).sorted().forEach(id -> {
+                    Runnable advance = () -> auctionRepository.findByIdForUpdate(id).ifPresent(auction -> {
+                        if (advanceOne(auction, current)) auctionRepository.saveAndFlush(auction);
+                        if(operations!=null && "AWAITING_CHECKOUT".equals(auction.getStatus()) && auction.getCheckoutDeadline()!=null
+                            && current.isBefore(auction.getCheckoutDeadline()) && !current.isBefore(auction.getCheckoutDeadline().minusHours(1)))
+                            operations.notify(auction.getWinningUserId(),id,"CHECKOUT_REMINDER","Checkout deadline approaches for "+auction.getTitle(),"reminder:"+id);
+                    });
+                    if(transactionManager==null)advance.run();
+                    else new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(tx->advance.run());
+                });
     }
 
     private boolean advanceOne(Auction auction, LocalDateTime current) {
-        AuctionStatus status = statusOf(auction);
-        if (status == AuctionStatus.SCHEDULED && !current.isBefore(auction.getStartsAt())) {
+        boolean changed = false;
+        if (statusOf(auction) == AuctionStatus.SCHEDULED && !current.isBefore(auction.getStartsAt())) {
             auction.setStatus(AuctionStatus.LIVE.name());
-            auction.setUpdatedAt(current);
-            return true;
+            changed = true;
         }
-        if (status == AuctionStatus.LIVE && !current.isBefore(auction.getEndsAt())) {
+        if (statusOf(auction) == AuctionStatus.LIVE && !current.isBefore(auction.getEndsAt())) {
             if (auction.getBidCount() == 0) {
                 auction.setStatus(AuctionStatus.ENDED_NO_BIDS.name());
             } else {
                 AuctionBid winningBid = bidRepository.findFirstByAuction_AuctionIdOrderByAmountDescCreatedAtAsc(auction.getAuctionId())
                         .orElseThrow(() -> new IllegalStateException("Auction bid count does not match bid history"));
                 auction.setWinningUserId(winningBid.getBidderUserId());
-                auction.setCheckoutDeadline(current.plus(CHECKOUT_WINDOW));
+                auction.setCheckoutDeadline(auction.getEndsAt().plusHours(checkoutHours(auction)));
                 auction.setStatus(AuctionStatus.AWAITING_CHECKOUT.name());
             }
-            auction.setUpdatedAt(current);
-            return true;
+            changed = true;
         }
-        if (status == AuctionStatus.AWAITING_CHECKOUT && auction.getCheckoutDeadline() != null
+        if (statusOf(auction) == AuctionStatus.AWAITING_CHECKOUT && auction.getCheckoutDeadline() != null
                 && !current.isBefore(auction.getCheckoutDeadline())) {
             auction.setStatus(AuctionStatus.CHECKOUT_EXPIRED.name());
-            auction.setUpdatedAt(current);
-            return true;
+            changed = true;
         }
-        return false;
+        if (changed) {
+            auction.setUpdatedAt(current);
+            if(inventory!=null && List.of("ENDED_NO_BIDS","CHECKOUT_EXPIRED").contains(auction.getStatus()))inventory.release(auction,false);
+            if(operations!=null) {
+                operations.audit(null,auction.getAuctionId(),"LIFECYCLE","",snapshot(auction));
+                if("AWAITING_CHECKOUT".equals(auction.getStatus())) {
+                    operations.notify(auction.getWinningUserId(),auction.getAuctionId(),"WON","You won "+auction.getTitle()+". Checkout by "+auction.getCheckoutDeadline(),"won:"+auction.getAuctionId());
+                    operations.notify(auction.getSellerUserId(),auction.getAuctionId(),"WINNER_SELECTED","A winner was selected for "+auction.getTitle(),"winner:"+auction.getAuctionId());
+                }
+            }
+        }
+        return changed;
     }
 
     private void apply(Auction auction, AuctionRequest request) {
         if (request == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Auction data is required");
+        if (auction.getBidIncrement() == null) {
+            var settings = operations == null ? new org.example.model.AuctionSettings() : operations.settings();
+            auction.setBidIncrement(settings.getBidIncrement()); auction.setCheckoutHours(settings.getCheckoutHours());
+            auction.setAntiSnipingMinutes(settings.getAntiSnipingMinutes());
+        }
+        if(inventory!=null) inventory.bind(auction,request);
         auction.setTitle(require(request.title(), "Auction title is required"));
         if (request.gameId() == null || !cardGameRepository.existsById(request.gameId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Select a supported card game");
         }
-        if (request.startingPrice() == null || request.startingPrice() <= 0) {
+        if (request.startingPrice() == null || (!Double.isFinite(request.startingPrice()) || request.startingPrice() <= 0 || request.startingPrice()>1000000000d || java.math.BigDecimal.valueOf(request.startingPrice()).stripTrailingZeros().scale()>2)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Starting price must be greater than zero");
         }
         validateTiming(request.startsAt(), request.endsAt());
@@ -386,7 +454,7 @@ public class AuctionService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Auction end time must be after the start time");
         }
         Duration duration = Duration.between(startsAt, endsAt);
-        if (duration.compareTo(MIN_DURATION) < 0 || duration.compareTo(MAX_DURATION) > 0) {
+        if (duration.compareTo(Duration.ofHours(operations==null?1:operations.settings().getMinDurationHours())) < 0 || duration.compareTo(Duration.ofHours(operations==null?168:operations.settings().getMaxDurationHours())) > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Auction duration must be between 1 hour and 7 days");
         }
         if (endsAt.isBefore(now())) {
@@ -414,7 +482,7 @@ public class AuctionService {
     }
 
     private Auction requireOwnedAuction(User user, Integer auctionId) {
-        Auction auction = findAuction(auctionId);
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Auction not found"));
         if (!Objects.equals(user.getUaId(), auction.getSellerUserId()) || !"MARKETPLACE".equalsIgnoreCase(auction.getSource())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Auction not found");
         }
@@ -478,14 +546,30 @@ public class AuctionService {
                 auction.getBidCount(), auction.getStartsAt(), auction.getEndsAt(), auction.getCheckoutDeadline(), auction.getStatus(),
                 auction.getSource(), store == null ? null : store.getStoreId(),
                 store == null ? "Optracard Official Store" : store.getStoreName(), auction.getSellerUserId(),
-                auction.getWinningUserId(), leadingUserId, auction.getReviewNote(), auction.getCreatedAt());
+                auction.getWinningUserId(), leadingUserId, auction.getReviewNote(), auction.getCreatedAt(), increment(auction),checkoutHours(auction),antiSniping(auction),auction.getProductId(),auction.getCardCondition(),auction.getGrading(),auction.getEvidenceImages()==null||auction.getEvidenceImages().isBlank()?List.of():List.of(auction.getEvidenceImages().split("\\n")));
     }
 
     private AuctionBidResponse toBidResponse(AuctionBid bid) {
         return new AuctionBidResponse(bid.getId(), bid.getAmount(), bid.getBidderPublicCode(), bid.getCreatedAt());
     }
 
-    private LocalDateTime now() { return LocalDateTime.now(BANGKOK); }
+    private double increment(Auction a) {return a.getBidIncrement()==null?50d:a.getBidIncrement();}
+    private int checkoutHours(Auction a) {return a.getCheckoutHours()==null?24:a.getCheckoutHours();}
+    private int antiSniping(Auction a) {return a.getAntiSnipingMinutes()==null?5:a.getAntiSnipingMinutes();}
+    private String snapshot(Auction a) {return operations==null?"":operations.snapshot(a);}
+    private AuctionResponse saved(Auction a,Integer actor,String action,String before) {
+        a.setUpdatedAt(now());
+        auctionRepository.saveAndFlush(a);
+        if(inventory!=null && List.of("CANCELLED","CLOSED","REJECTED","ENDED_NO_BIDS","CHECKOUT_EXPIRED","COMPLETED").contains(a.getStatus())) inventory.release(a,"COMPLETED".equals(a.getStatus()));
+        if(operations!=null) {
+            operations.audit(actor,a.getAuctionId(),action,before,snapshot(a));
+            if("SUBMIT".equals(action)) operations.notifyAdmins(a);
+            if(List.of("APPROVE","REJECT","ADMIN_CANCEL","SELLER_CANCEL","CHECKOUT").contains(action))
+                operations.notify(a.getSellerUserId(),a.getAuctionId(),action,"Auction "+a.getTitle()+": "+a.getStatus()+ (a.getReviewNote()==null?"":". "+a.getReviewNote()),action+":"+a.getAuctionId()+":"+a.getUpdatedAt());
+        }
+        return toResponse(a);
+    }
+    private LocalDateTime now() { return LocalDateTime.now(clock); }
     private double roundMoney(double amount) { return Math.round(amount * 100d) / 100d; }
     private String blankToNull(String value) { return value == null || value.trim().isEmpty() ? null : value.trim(); }
     private String require(String value, String message) {

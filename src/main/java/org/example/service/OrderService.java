@@ -30,6 +30,8 @@ import java.util.Map;
 
 @Service
 public class OrderService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.example.repository.AuctionRepository auctionRepository;
     private static final double STANDARD_DELIVERY_FEE = 50d;
     private static final String OFFICIAL_STORE_NAME = "Optracard Official Store";
 
@@ -67,8 +69,8 @@ public class OrderService {
 
         // Validate every product before changing stock or creating any order.
         Map<Seller, List<CartLine>> itemsBySeller = new LinkedHashMap<>();
-        for (CartItem cartItem : cart.getItems()) {
-            Product product = productRepository.findById(cartItem.getProductId())
+        for (CartItem cartItem : cart.getItems().stream().sorted(java.util.Comparator.comparing(CartItem::getProductId)).toList()) {
+            Product product = productRepository.findByIdForUpdate(cartItem.getProductId())
                     .filter(this::isPurchasable)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
                             "A product in your cart is no longer available"));
@@ -217,6 +219,12 @@ public class OrderService {
             return new OrderItemResponse(item.getProductId(), name, game, image, item.getPrice(), item.getQuantity(), store);
         }).toList();
 
+        if(order.getAuctionId()!=null && items.isEmpty() && auctionRepository!=null) {
+            var auction=auctionRepository.findById(order.getAuctionId()).orElse(null);
+            if(auction!=null) items=List.of(new OrderItemResponse(auction.getProductId(),auction.getTitle(),
+                auction.getCardGame()==null?"Card auction":auction.getCardGame().getGameName(),auction.getImageUrl(),
+                order.getSubtotal(),1,order.getStoreName()));
+        }
         String storeName = normalize(order.getStoreName());
         if (storeName == null) storeName = items.isEmpty() ? OFFICIAL_STORE_NAME : items.get(0).storeName();
         String source = normalize(order.getSource());
@@ -229,7 +237,7 @@ public class OrderService {
                 displayStatus(order.getStatus()), order.getShippingMethod(), order.getShippingFee(),
                 order.getTrackingNumber(),
                 order.getShippingAddress(), order.getRecipientName(), order.getRecipientPhone(), items,
-                subtotal, order.getPromotionCode(), order.getPromotionName(), number(order.getDiscountAmount()));
+                subtotal, order.getPromotionCode(), order.getPromotionName(), number(order.getDiscountAmount()),order.getAuctionId());
     }
 
     private void validateRequest(CreateOrderRequest request, String shipping, String payment) {
@@ -273,7 +281,7 @@ public class OrderService {
     }
 
     private boolean isPurchasable(Product product) {
-        return Boolean.TRUE.equals(product.getIsActive())
+        return !Boolean.TRUE.equals(product.getAuctionReserved()) && Boolean.TRUE.equals(product.getIsActive())
                 && (!"MARKETPLACE".equalsIgnoreCase(product.getListingSource())
                 || ("APPROVED".equalsIgnoreCase(product.getApprovalStatus())
                 && product.getStore() != null && "APPROVED".equalsIgnoreCase(product.getStore().getStoreStatus())));

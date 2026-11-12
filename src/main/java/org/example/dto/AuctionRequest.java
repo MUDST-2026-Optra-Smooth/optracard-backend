@@ -28,4 +28,9 @@ public record AuctionRequest(
 
         @Schema(description = "Auction closing timestamp (ISO-8601)", example = "2026-11-20T20:00:00")
         LocalDateTime endsAt
-) {}
+, Integer productId, String cardCondition, String grading, java.util.List<String> evidenceImages
+) {
+ public AuctionRequest(String title,Integer gameId,String type,String imageUrl,String description,Double startingPrice,LocalDateTime startsAt,LocalDateTime endsAt) {
+  this(title,gameId,type,imageUrl,description,startingPrice,startsAt,endsAt,null,null,null,java.util.List.of());
+ }
+}

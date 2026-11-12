@@ -22,6 +22,7 @@ jobs:
       - name: Run full suite with PostgreSQL contract tests
         env:
           RUN_POSTGRES_TESTS: 'true'
+          RUN_AUCTION_POSTGRES_TESTS: 'true'
         run: mvn --batch-mode --no-transfer-progress clean verify
       - uses: actions/upload-artifact@v4
         if: always()

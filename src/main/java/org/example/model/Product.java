@@ -8,6 +8,8 @@ import lombok.Data;
 @Table(name = "products")
 public class Product{
     
+    private Boolean auctionReserved = false;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "pro_id")

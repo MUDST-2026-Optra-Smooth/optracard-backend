@@ -89,6 +89,18 @@ public class Auction {
     @Column(name = "auction_updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    private Integer productId;
+    private Boolean stockReserved = false;
+    private Boolean productWasActive;
+    @Column(length=80) private String cardCondition;
+    @Column(length=100) private String grading;
+    @Column(columnDefinition="TEXT") private String evidenceImages;
+
+    // Auction terms are fixed when a listing is created.
+    private Double bidIncrement;
+    private Integer checkoutHours;
+    private Integer antiSnipingMinutes;
+
     @Version
     @Column(name = "auction_version")
     private Long version;
