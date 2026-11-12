@@ -67,8 +67,11 @@ public record OrderResponse(
         String discountName,
 
         @Schema(description = "Total discount amount subtracted in THB", example = "100.00")
-        Double discountAmount
+        Double discountAmount, Integer auctionId
 ) {
+    public OrderResponse(Integer orderId, String orderNumber, Integer storeId, String storeName, String source, LocalDateTime createdAt, Double total, String paymentMethod, String paymentStatus, String status, String shippingMethod, Double shippingFee, String trackingNumber, String shippingAddress, String recipientName, String recipientPhone, List<OrderItemResponse> items, Double subtotal, String discountCode, String discountName, Double discountAmount) {
+        this(orderId, orderNumber, storeId, storeName, source, createdAt, total, paymentMethod, paymentStatus, status, shippingMethod, shippingFee, trackingNumber, shippingAddress, recipientName, recipientPhone, items, subtotal, discountCode, discountName, discountAmount,null);
+    }
     public OrderResponse(Integer orderId, String orderNumber, Integer storeId, String storeName, String source,
                          LocalDateTime createdAt, Double total, String paymentMethod, String paymentStatus,
                          String status, String shippingMethod, Double shippingFee, String trackingNumber,
@@ -76,6 +79,6 @@ public record OrderResponse(
                          List<OrderItemResponse> items) {
         this(orderId, orderNumber, storeId, storeName, source, createdAt, total, paymentMethod, paymentStatus,
                 status, shippingMethod, shippingFee, trackingNumber, shippingAddress, recipientName, recipientPhone,
-                items, null, null, null, 0d);
+                items, null, null, null, 0d, null);
     }
 }

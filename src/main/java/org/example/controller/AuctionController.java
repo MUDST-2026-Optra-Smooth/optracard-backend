@@ -29,8 +29,9 @@ import java.util.List;
 @Tag(name = "Auctions", description = "Public storefront and customer endpoints for card auctions, live bidding, and auction checkout")
 public class AuctionController {
     private final AuctionService auctionService;
+    private final org.example.service.AuctionPrivacyService privacy;
 
-    public AuctionController(AuctionService auctionService) { this.auctionService = auctionService; }
+    public AuctionController(AuctionService auctionService, org.example.service.AuctionPrivacyService privacy) { this.auctionService = auctionService; this.privacy = privacy; }
 
     @Operation(
             summary = "List public auctions",
@@ -41,10 +42,12 @@ public class AuctionController {
     })
     @GetMapping
     public List<AuctionResponse> list(
+            Authentication authentication,
             @Parameter(description = "Filter by card game name (e.g. Pokemon, One Piece)") @RequestParam(required = false) String game,
             @Parameter(description = "Filter by source: OFFICIAL or MARKETPLACE") @RequestParam(required = false) String source,
             @Parameter(description = "Filter by status: ACTIVE, UPCOMING, ENDED") @RequestParam(required = false) String status) {
-        return auctionService.listPublic(game, source, status);
+        return auctionService.listPublic(game, source, status).stream()
+                .map(a -> privacy.forViewer(a, authentication == null ? null : authentication.getName())).toList();
     }
 
     @Operation(
@@ -55,10 +58,17 @@ public class AuctionController {
             @ApiResponse(responseCode = "200", description = "Auction details retrieved successfully"),
             @ApiResponse(responseCode = "404", description = "Auction not found")
     })
+    @GetMapping("/mine")
+    public List<AuctionResponse> mine(Authentication authentication) {
+        if(authentication==null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED);
+        return auctionService.myAuctions(authentication.getName()).stream().map(a->privacy.forViewer(a,authentication.getName())).toList();
+    }
+
     @GetMapping("/{id}")
     public AuctionResponse detail(
+            Authentication authentication,
             @Parameter(description = "Auction ID", example = "1") @PathVariable Integer id) {
-        return auctionService.getPublic(id);
+        return privacy.forViewer(auctionService.getPublic(id), authentication == null ? null : authentication.getName());
     }
 
     @Operation(

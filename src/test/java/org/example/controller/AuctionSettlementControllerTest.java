@@ -8,6 +8,7 @@ import org.example.dto.MarketplaceFeeConfigResponse;
 import org.example.dto.SettlementReportResponse;
 import org.example.dto.UpdateMarketplaceFeeRequest;
 import org.example.service.AuctionService;
+import org.example.service.AuctionPrivacyService;
 import org.example.service.MarketplaceFeeService;
 import org.example.service.MarketplaceSettlementReportService;
 import org.junit.jupiter.api.Test;
@@ -29,28 +30,30 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class AuctionSettlementControllerTest {
     @Mock private AuctionService auctionService;
+    @Mock private AuctionPrivacyService auctionPrivacyService;
     @Mock private MarketplaceFeeService feeService;
     @Mock private MarketplaceSettlementReportService reportService;
     @Mock private Authentication authentication;
 
     @Test
     void publicAuctionEndpointsDelegateFiltersDetailsAndBidHistory() {
-        AuctionController controller = new AuctionController(auctionService);
+        AuctionController controller = new AuctionController(auctionService, auctionPrivacyService);
         AuctionResponse auction = org.mockito.Mockito.mock(AuctionResponse.class);
         AuctionBidResponse bid = org.mockito.Mockito.mock(AuctionBidResponse.class);
         when(auctionService.listPublic("Pokemon", "OFFICIAL", "LIVE")).thenReturn(List.of(auction));
         when(auctionService.getPublic(7)).thenReturn(auction);
         when(auctionService.bidHistory(7)).thenReturn(List.of(bid));
+        when(auctionPrivacyService.forViewer(auction, null)).thenReturn(auction);
 
-        assertEquals(List.of(auction), controller.list("Pokemon", "OFFICIAL", "LIVE"));
-        assertSame(auction, controller.detail(7));
+        assertEquals(List.of(auction), controller.list(null, "Pokemon", "OFFICIAL", "LIVE"));
+        assertSame(auction, controller.detail(null, 7));
         assertEquals(List.of(bid), controller.bids(7));
         verify(auctionService).listPublic("Pokemon", "OFFICIAL", "LIVE");
     }
 
     @Test
     void authenticatedAuctionMutationsForwardIdentityAndPayload() {
-        AuctionController controller = new AuctionController(auctionService);
+        AuctionController controller = new AuctionController(auctionService, auctionPrivacyService);
         AuctionBidRequest request = new AuctionBidRequest(1250d);
         AuctionBidResponse response = org.mockito.Mockito.mock(AuctionBidResponse.class);
         when(authentication.getName()).thenReturn("buyer@example.test");

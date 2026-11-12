@@ -125,13 +125,14 @@ class AuctionServiceTest {
         AuctionBid winner = new AuctionBid();
         winner.setBidderUserId(8);
         when(auctionRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(auction));
+        when(auctionRepository.findByIdForUpdate(42)).thenReturn(Optional.of(auction));
         when(bidRepository.findFirstByAuction_AuctionIdOrderByAmountDescCreatedAtAsc(42)).thenReturn(Optional.of(winner));
 
         service.advanceAuctionLifecycle();
 
         assertEquals(AuctionStatus.AWAITING_CHECKOUT.name(), auction.getStatus());
         assertEquals(8, auction.getWinningUserId());
-        verify(auctionRepository).saveAll(List.of(auction));
+        verify(auctionRepository).saveAndFlush(auction);
 
         auction.setCheckoutDeadline(now().minusSeconds(1));
         service.advanceAuctionLifecycle();
@@ -170,7 +171,7 @@ class AuctionServiceTest {
         User admin = user(99, "ADMIN");
         Auction pending = auction(3, AuctionStatus.PENDING_REVIEW, 7, 500d, 500d, 0);
         when(userRepository.findByEmail("admin@example.test")).thenReturn(Optional.of(admin));
-        when(auctionRepository.findById(3)).thenReturn(Optional.of(pending));
+        when(auctionRepository.findByIdForUpdate(3)).thenReturn(Optional.of(pending));
         var reviewed = service.reviewAuction("admin@example.test", 3, false, "Need proof of condition");
         assertEquals(AuctionStatus.REJECTED.name(), reviewed.status());
         assertEquals("Need proof of condition", reviewed.reviewNote());
