@@ -9,6 +9,7 @@ import org.example.model.Product;
 import org.example.model.User;
 import org.example.repository.CardGameRepository;
 import org.example.repository.MarketplaceStoreRepository;
+import org.example.repository.MarketplaceSettlementLedgerRepository;
 import org.example.repository.OrderRepository;
 import org.example.repository.ProductRepository;
 import org.example.repository.UserRepository;
@@ -38,13 +39,15 @@ class SellerServiceTest {
     @Mock private OrderRepository orderRepository;
     @Mock private OrderNotificationService notificationService;
     @Mock private ProductDeletionService productDeletionService;
+    @Mock private MarketplaceSettlementService settlementService;
+    @Mock private MarketplaceSettlementLedgerRepository settlementLedgerRepository;
 
     private SellerService sellerService;
 
     @BeforeEach
     void setUp() {
         sellerService = new SellerService(productRepository, storeRepository, userRepository, cardGameRepository, orderRepository,
-                notificationService, productDeletionService);
+                notificationService, productDeletionService, settlementService, settlementLedgerRepository);
     }
 
     @Test

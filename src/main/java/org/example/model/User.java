@@ -31,6 +31,9 @@ public class User {
     @Column(name = "UA_Address")
     private String address;
 
+    @Column(name = "UA_ProfileImage", columnDefinition = "TEXT")
+    private String profileImage;
+
     @Column(name = "UA_CreateDate", insertable = false, updatable = false)
     private LocalDateTime createDate;
 }

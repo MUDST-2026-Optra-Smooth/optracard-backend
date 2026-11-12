@@ -58,7 +58,7 @@ class AuthControllerTest {
 
     @Test
     void login_whenSuccessful_returnsAuthResponse() {
-        AuthResponse authResponse = new AuthResponse("mock.jwt.token", 1, "john", "USER", "john@example.com");
+        AuthResponse authResponse = new AuthResponse("mock.jwt.token", 1, "john", "john@example.com", "USER", null);
         when(authService.login(authRequest)).thenReturn(authResponse);
 
         ResponseEntity<?> response = authController.login(authRequest);

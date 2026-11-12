@@ -26,6 +26,14 @@ The backend powers both the **Optracard Official Store** and a **Multi-Store Sel
   - [10. Admin Store Reviews (`/api/admin/stores`)](#10-admin-store-reviews-apiadminstores)
   - [11. Admin Marketplace Reviews (`/api/admin/marketplace/requests`)](#11-admin-marketplace-reviews-apiadminmarketplacerequests)
   - [12. Super Admin Executive Suite (`/api/superadmin`)](#12-super-admin-executive-suite-apisuperadmin)
+  - [13. Card Auctions (`/api/auctions`)](#13-card-auctions-apiauctions)
+  - [14. Seller Auctions (`/api/seller/auctions`)](#14-seller-auctions-apisellerauctions)
+  - [15. Admin Auctions (`/api/admin/auctions`)](#15-admin-auctions-apiadminauctions)
+  - [16. Promotions & Coupons (`/api/admin/promotions`)](#16-promotions--coupons-apiadminpromotions)
+  - [17. Stock Alerts (`/api/seller/stock-alerts`)](#17-stock-alerts-apisellerstock-alerts)
+  - [18. Reports & Analytics (`/api/admin/reports`)](#18-reports--analytics-apiadminreports)
+  - [19. In-App Order Notifications (`/api/order-notifications`)](#19-in-app-order-notifications-apiorder-notifications)
+- [Interactive Swagger UI & OpenAPI 3.0 Documentation](#interactive-swagger-ui--openapi-30-documentation)
 - [Environment Variables & Configuration](#environment-variables--configuration)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
@@ -290,6 +298,125 @@ Restricted exclusively to `SUPER_ADMIN`.
 | `GET` | `/api/superadmin/staff` | List all administrator accounts (`ADMIN` and `SUPER_ADMIN`) |
 | `POST` | `/api/superadmin/staff` | Create a new `ADMIN` staff account |
 | `DELETE` | `/api/superadmin/staff/{userId}` | Delete an administrator account (protects last `SUPER_ADMIN`) |
+
+---
+
+### 13. Card Auctions (`/api/auctions`)
+Public and user endpoints for card bidding and auction checkout.
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/auctions` | Public | List active and upcoming auctions (filterable by game, status, sort) |
+| `GET` | `/api/auctions/{id}` | Public | Get auction details, status, and current highest bid |
+| `GET` | `/api/auctions/{id}/bids` | Public | View anonymized bid history for an auction |
+| `POST` | `/api/auctions/{id}/bids` | Authenticated | Place a competitive bid on an active auction |
+| `POST` | `/api/auctions/{id}/checkout` | Authenticated | Checkout and pay for won auction before payment deadline |
+
+---
+
+### 14. Seller Auctions (`/api/seller/auctions`)
+Restricted to `SELLER`, `ADMIN`, and `SUPER_ADMIN`.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/seller/auctions` | List auction listings submitted by this seller |
+| `GET` | `/api/seller/auctions/{id}` | Get seller auction details and review feedback |
+| `POST` | `/api/seller/auctions` | Submit a new card auction (enters `PENDING_APPROVAL`) |
+| `PUT` | `/api/seller/auctions/{id}` | Update draft or unapproved auction details |
+| `DELETE` | `/api/seller/auctions/{id}` | Delete unapproved seller auction |
+
+---
+
+### 15. Admin Auctions (`/api/admin/auctions`)
+Restricted to `ADMIN` and `SUPER_ADMIN`.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/admin/auctions` | List all platform auctions across official and marketplace sellers |
+| `GET` | `/api/admin/auctions/{id}` | View detailed auction overview and admin audit information |
+| `POST` | `/api/admin/auctions` | Create an official platform auction (automatically approved) |
+| `PUT` | `/api/admin/auctions/{id}/review` | Approve or reject a marketplace seller auction submission |
+| `DELETE` | `/api/admin/auctions/{id}` | Cancel and permanently remove an auction |
+
+---
+
+### 16. Promotions & Coupons (`/api/admin/promotions`)
+Restricted to `ADMIN` and `SUPER_ADMIN` (customer validation via `/api/orders/promotions/preview`).
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/admin/promotions` | List all promotional discount campaigns |
+| `GET` | `/api/admin/promotions/{id}` | View promotion rules, usage counters, and date bounds |
+| `POST` | `/api/admin/promotions` | Create a new promotion coupon (percentage or fixed discount) |
+| `PUT` | `/api/admin/promotions/{id}` | Update existing promotion configuration |
+| `DELETE` | `/api/admin/promotions/{id}` | Delete a promotional campaign |
+
+---
+
+### 17. Stock Alerts (`/api/seller/stock-alerts`)
+Restricted to `SELLER`, `ADMIN`, and `SUPER_ADMIN`.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/seller/stock-alerts` | List inventory stock alerts (low stock or out-of-stock) |
+| `PUT` | `/api/seller/stock-alerts/{id}/read` | Mark a stock alert as read / acknowledged |
+| `GET` | `/api/seller/stock-alerts/settings` | Get configured threshold settings |
+| `PUT` | `/api/seller/stock-alerts/settings` | Update store low-stock threshold |
+
+---
+
+### 18. Reports & Analytics (`/api/admin/reports`)
+Restricted to `ADMIN` and `SUPER_ADMIN`.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/admin/reports/weekly` | Retrieve 7-day executive financial report (revenue, cost, profit, top products) |
+| `GET` | `/api/admin/reports/restock-predictions` | Forecast days until stockout and restock recommendations |
+
+---
+
+### 19. In-App Order Notifications (`/api/order-notifications`)
+Requires authenticated user.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/order-notifications` | List user order fulfillment and tracking notifications |
+| `PUT` | `/api/order-notifications/{id}/read` | Mark order notification as read |
+
+---
+
+## Interactive Swagger UI & OpenAPI 3.0 Documentation
+
+OptraCard exposes interactive OpenAPI 3.0 documentation generated dynamically via `springdoc-openapi-starter-webmvc-ui`.
+
+### Accessing Swagger UI
+- **Local Development Server**: [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
+- **Kubernetes NodePort Service**: [http://localhost:30081/swagger-ui.html](http://localhost:30081/swagger-ui.html)
+- **Raw OpenAPI JSON Spec**: [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
+
+### Features & Security in Swagger UI
+- **Bearer Authentication Support**: All protected endpoints require a valid JWT token. Click the **Authorize** button in Swagger UI and provide your token (`bearerAuth`).
+- **Domain Categorization**: Endpoints are grouped into 19 dedicated tags matching the business architecture:
+  - `Authentication`: Public user registration and JWT authentication
+  - `User Profile`: Personal user profile and purchased card collection binder
+  - `Product Catalog`: Public card browsing, facets, and fuzzy multi-lingual search
+  - `Marketplace Public`: Public seller storefronts and active merchant inventories
+  - `Seller Store Applications`: Merchant onboarding wizard and verification submission
+  - `Shopping Cart`: Multi-vendor cart management
+  - `Customer Orders`: Checkout, order history, tracking, and single-click reordering
+  - `Seller Operations`: Merchant inventory listing, editing, deletion, and order fulfillment
+  - `Admin Operations`: Official catalog management, platform order fulfillment, and KPI dashboard
+  - `Admin Store Verification`: Onboarding review and merchant document verification
+  - `Admin Marketplace Requests`: Product listing moderation and approval workflow
+  - `Super Admin Overview`: Executive analytics, staff creation, store auditing, and account lifecycle
+  - `Card Auctions`: Public live card auctions, bid history, bidding, and auction checkout
+  - `Seller Auctions`: Merchant auction listing creation, draft editing, and lifecycle management
+  - `Admin Auctions`: Platform auction moderation, approval, cancellation, and official auction creation
+  - `Promotions (Admin)`: Coupon creation, validation rules, usage limits, and expiration management
+  - `Stock Alerts`: Automated inventory threshold alerts and low-stock replenishment notifications
+  - `Admin Reports`: Weekly sales, revenue, profit, items sold, and restocking predictions
+  - `Order Notifications`: Real-time shipment and fulfillment updates for customers
+
 
 ---
 

@@ -168,3 +168,38 @@ CREATE TABLE IF NOT EXISTS stock_alert_reads (
      CONSTRAINT uq_stock_alert_read_user UNIQUE (stock_alert_id, ua_id)
 );
 
+-- Marketplace settlement is deliberately append-only. A changed fee creates a
+-- new configuration row; a cancelled order creates a negative reversal row.
+CREATE TABLE Marketplace_Fee_Configurations (
+     Fee_Config_ID SERIAL PRIMARY KEY,
+     Fee_Rate DECIMAL(5, 2) NOT NULL CHECK (Fee_Rate >= 0 AND Fee_Rate <= 100),
+     Effective_From TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     Changed_By VARCHAR(255) NOT NULL,
+     Created_At TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO Marketplace_Fee_Configurations (Fee_Rate, Effective_From, Changed_By)
+VALUES (5.00, CURRENT_TIMESTAMP, 'system');
+
+CREATE TABLE Marketplace_Settlement_Ledger (
+     Settlement_ID SERIAL PRIMARY KEY,
+     Settlement_Entry_Type VARCHAR(30) NOT NULL CHECK (Settlement_Entry_Type IN ('ORDER_CHARGE', 'AUCTION_CHARGE', 'REVERSAL')),
+     Settlement_Status VARCHAR(30) NOT NULL DEFAULT 'POSTED',
+     Seller_User_ID INT NOT NULL,
+     Store_ID INT NOT NULL,
+     Store_Name VARCHAR(255) NOT NULL,
+     Reference_Type VARCHAR(30) NOT NULL CHECK (Reference_Type IN ('ORDER', 'AUCTION')),
+     Reference_ID VARCHAR(100) NOT NULL,
+     Reference_Number VARCHAR(100) NOT NULL,
+     Gross_Amount DECIMAL(12, 2) NOT NULL,
+     Fee_Rate DECIMAL(5, 2) NOT NULL,
+     Fee_Amount DECIMAL(12, 2) NOT NULL,
+     Net_Amount DECIMAL(12, 2) NOT NULL,
+     Reversal_Of_ID INT UNIQUE,
+     Created_At TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     CONSTRAINT uq_settlement_charge_reference UNIQUE (Settlement_Entry_Type, Reference_Type, Reference_ID)
+);
+
+CREATE INDEX ix_settlement_store_created ON Marketplace_Settlement_Ledger (Store_ID, Created_At DESC);
+CREATE INDEX ix_settlement_seller_created ON Marketplace_Settlement_Ledger (Seller_User_ID, Created_At DESC);
+

@@ -1,5 +1,11 @@
 package org.example.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.example.dto.SellerProductResponse;
 import org.example.model.Product;
 import org.example.repository.ProductRepository;
@@ -22,6 +28,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/marketplace/requests")
 @CrossOrigin(origins = "http://localhost:5173")
+@Tag(name = "Admin Marketplace Requests", description = "Administrative endpoints for approving or rejecting seller product listings submitted to the marketplace")
+@SecurityRequirement(name = "bearerAuth")
 public class AdminMarketplaceController {
     private final ProductRepository productRepository;
 
@@ -29,9 +37,19 @@ public class AdminMarketplaceController {
         this.productRepository = productRepository;
     }
 
+    @Operation(
+            summary = "List marketplace product requests",
+            description = "Retrieve all seller product listing requests submitted for approval, filterable by approval status. Requires ADMIN authority."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Marketplace product requests list retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - authentication required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires ADMIN role")
+    })
     @GetMapping
-    public List<SellerProductResponse> list(Authentication authentication,
-                                             @RequestParam(defaultValue = "ALL") String status) {
+    public List<SellerProductResponse> list(
+            Authentication authentication,
+            @Parameter(description = "Filter by status: ALL, PENDING, APPROVED, REJECTED") @RequestParam(defaultValue = "ALL") String status) {
         requireAdmin(authentication);
         return productRepository.findByListingSourceOrderByProIdDesc("MARKETPLACE").stream()
                 .filter(product -> "ALL".equalsIgnoreCase(status)
@@ -40,8 +58,20 @@ public class AdminMarketplaceController {
                 .toList();
     }
 
+    @Operation(
+            summary = "Approve marketplace product",
+            description = "Approve a seller's submitted marketplace product, making it active and visible in the public catalog."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Product listing approved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - authentication required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires ADMIN role"),
+            @ApiResponse(responseCode = "404", description = "Marketplace request not found")
+    })
     @PutMapping("/{id}/approve")
-    public SellerProductResponse approve(Authentication authentication, @PathVariable Integer id) {
+    public SellerProductResponse approve(
+            Authentication authentication,
+            @Parameter(description = "Product ID", example = "10") @PathVariable Integer id) {
         requireAdmin(authentication);
         Product product = findProduct(id);
         product.setApprovalStatus("APPROVED");
@@ -49,10 +79,21 @@ public class AdminMarketplaceController {
         return toResponse(productRepository.saveAndFlush(product));
     }
 
+    @Operation(
+            summary = "Reject marketplace product",
+            description = "Reject a seller's submitted product listing with optional administrative notes."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Product listing rejected successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - authentication required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires ADMIN role"),
+            @ApiResponse(responseCode = "404", description = "Marketplace request not found")
+    })
     @PutMapping("/{id}/reject")
-    public SellerProductResponse reject(Authentication authentication,
-                                        @PathVariable Integer id,
-                                        @RequestBody(required = false) ReviewRequest request) {
+    public SellerProductResponse reject(
+            Authentication authentication,
+            @Parameter(description = "Product ID", example = "10") @PathVariable Integer id,
+            @RequestBody(required = false) ReviewRequest request) {
         requireAdmin(authentication);
         Product product = findProduct(id);
         product.setApprovalStatus("REJECTED");
@@ -86,5 +127,6 @@ public class AdminMarketplaceController {
                 product.getStore() == null ? "Unknown store" : product.getStore().getStoreName());
     }
 
-    public record ReviewRequest(String note) {}
+    public record ReviewRequest(
+            @Parameter(description = "Feedback or reason note for listing rejection") String note) {}
 }

@@ -1,5 +1,11 @@
 package org.example.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.example.dto.AdminData;
 import org.example.service.MarketplaceStoreService;
 import org.example.service.AdminDataService;
@@ -17,6 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/admin/stores")
 @CrossOrigin(origins = "http://localhost:5173")
+@Tag(name = "Admin Stores", description = "Administrative endpoints for reviewing merchant store onboarding applications and vendor verification")
+@SecurityRequirement(name = "bearerAuth")
 public class AdminStoreController {
     private final MarketplaceStoreService storeService;
     private final AdminDataService adminDataService;
@@ -26,10 +34,22 @@ public class AdminStoreController {
         this.adminDataService = adminDataService;
     }
 
+    @Operation(
+            summary = "Review store application",
+            description = "Approve or reject a merchant store registration application with review notes. Requires ADMIN or SUPER_ADMIN role."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Store application reviewed successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid review status or transition"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - authentication required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - requires ADMIN authority"),
+            @ApiResponse(responseCode = "404", description = "Store not found")
+    })
     @PutMapping("/{id}/review")
-    public AdminData.StoreResponse review(Authentication authentication,
-                                          @PathVariable Integer id,
-                                          @RequestBody ReviewRequest request) {
+    public AdminData.StoreResponse review(
+            Authentication authentication,
+            @Parameter(description = "Store ID", example = "1") @PathVariable Integer id,
+            @RequestBody ReviewRequest request) {
         boolean admin = authentication != null && authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch(role -> role.equals("ROLE_ADMIN") || role.equals("ROLE_SUPER_ADMIN"));
@@ -38,5 +58,7 @@ public class AdminStoreController {
         return adminDataService.getStore(id);
     }
 
-    public record ReviewRequest(String status, String note) {}
+    public record ReviewRequest(
+            @Parameter(description = "New store review status: APPROVED or REJECTED") String status,
+            @Parameter(description = "Feedback or reason note for the applicant") String note) {}
 }
