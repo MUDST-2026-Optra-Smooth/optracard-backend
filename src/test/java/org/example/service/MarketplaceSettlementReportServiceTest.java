@@ -13,12 +13,16 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.when;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class MarketplaceSettlementReportServiceTest {
@@ -49,6 +53,36 @@ class MarketplaceSettlementReportServiceTest {
         assertEquals(new BigDecimal("0.00"), result.summary().feeAmount());
         assertEquals(new BigDecimal("0.00"), result.summary().netAmount());
         assertEquals("REVERSED", result.entries().get(1).status());
+    }
+
+    @Test
+    void reportsRejectInvalidDateRangesAndUnknownEntryTypes() {
+        MarketplaceSettlementReportService service = new MarketplaceSettlementReportService(ledgerRepository, storeRepository, userRepository);
+
+        ResponseStatusException dates = assertThrows(ResponseStatusException.class,
+                () -> service.superAdminReport(LocalDate.now(), LocalDate.now().minusDays(1), "ALL", null, null));
+        ResponseStatusException type = assertThrows(ResponseStatusException.class,
+                () -> service.superAdminReport(null, null, "NOT_A_TYPE", null, null));
+
+        assertEquals(HttpStatus.BAD_REQUEST, dates.getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, type.getStatusCode());
+    }
+
+    @Test
+    void superAdminReportFiltersSellerStoreAndInclusiveDateBoundary() {
+        MarketplaceSettlementLedger matching = entry(1, SettlementEntryType.AUCTION_CHARGE, new BigDecimal("100.00"),
+                new BigDecimal("5.00"), new BigDecimal("95.00"), null);
+        matching.setCreatedAt(LocalDateTime.of(2026, 11, 10, 23, 59));
+        MarketplaceSettlementLedger other = entry(2, SettlementEntryType.ORDER_CHARGE, new BigDecimal("200.00"),
+                new BigDecimal("10.00"), new BigDecimal("190.00"), null);
+        other.setSellerUserId(8);
+        when(ledgerRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(matching, other));
+
+        var report = new MarketplaceSettlementReportService(ledgerRepository, storeRepository, userRepository)
+                .superAdminReport(LocalDate.of(2026, 11, 10), LocalDate.of(2026, 11, 10), "AUCTION_CHARGE", 7, 9);
+
+        assertEquals(1, report.entries().size());
+        assertEquals(new BigDecimal("100.00"), report.summary().grossAmount());
     }
 
     private MarketplaceSettlementLedger entry(Integer id, SettlementEntryType type, BigDecimal gross, BigDecimal fee,

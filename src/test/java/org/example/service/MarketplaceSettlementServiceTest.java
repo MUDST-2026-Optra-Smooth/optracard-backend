@@ -114,6 +114,38 @@ class MarketplaceSettlementServiceTest {
         assertEquals(100, reversal.getReversalOfId());
     }
 
+    @Test
+    void reversalIsIdempotentWhenTheCompensatingLedgerEntryAlreadyExists() {
+        Order order = marketplaceOrder(46, 1_000d, 0d, 0d);
+        MarketplaceSettlementLedger charge = new MarketplaceSettlementLedger();
+        charge.setId(100);
+        MarketplaceSettlementLedger reversal = new MarketplaceSettlementLedger();
+        reversal.setId(101);
+        when(ledgerRepository.findByEntryTypeAndReferenceTypeAndReferenceId(
+                SettlementEntryType.ORDER_CHARGE, "ORDER", "46")).thenReturn(Optional.of(charge));
+        when(ledgerRepository.findByReversalOfId(100)).thenReturn(Optional.of(reversal));
+
+        assertEquals(101, service.recordOrderReversal(order).orElseThrow().getId());
+        verify(ledgerRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void recordsAnAuctionChargeOnceWithRoundedMarketplaceFee() {
+        stubLedgerSave();
+        when(ledgerRepository.findByEntryTypeAndReferenceTypeAndReferenceId(
+                SettlementEntryType.AUCTION_CHARGE, "AUCTION", "AUC-9")).thenReturn(Optional.empty());
+        when(storeRepository.findById(9)).thenReturn(Optional.of(store()));
+        when(feeService.currentConfiguration()).thenReturn(feeConfig("7.25"));
+
+        MarketplaceSettlementLedger entry = service.recordAuctionCharge(
+                new MarketplaceSettlementService.AuctionSettlementCharge(9, " AUC-9 ", new BigDecimal("999.99")));
+
+        assertEquals(SettlementEntryType.AUCTION_CHARGE, entry.getEntryType());
+        assertEquals(new BigDecimal("72.50"), entry.getFeeAmount());
+        assertEquals(new BigDecimal("927.49"), entry.getNetAmount());
+        assertEquals("AUC-9", entry.getReferenceId());
+    }
+
     private void stubLedgerSave() {
         when(ledgerRepository.saveAndFlush(any(MarketplaceSettlementLedger.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));

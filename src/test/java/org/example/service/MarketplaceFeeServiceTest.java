@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -46,5 +47,29 @@ class MarketplaceFeeServiceTest {
 
         assertThrows(ResponseStatusException.class,
                 () -> service.update(new UpdateMarketplaceFeeRequest(new BigDecimal("100.01")), "admin@example.test"));
+    }
+
+    @Test
+    void currentConfigurationCreatesTheAuditableDefaultWhenNoHistoryExists() {
+        MarketplaceFeeService service = new MarketplaceFeeService(configRepository);
+        when(configRepository.findFirstByEffectiveFromLessThanEqualOrderByEffectiveFromDesc(any())).thenReturn(Optional.empty());
+        when(configRepository.saveAndFlush(any(MarketplaceFeeConfig.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MarketplaceFeeConfig result = service.currentConfiguration();
+
+        assertEquals(new BigDecimal("5.00"), result.getFeeRate());
+        assertEquals("system", result.getChangedBy());
+        verify(configRepository).saveAndFlush(any(MarketplaceFeeConfig.class));
+    }
+
+    @Test
+    void updateRoundsToMoneyPrecisionAndNormalizesBlankActor() {
+        MarketplaceFeeService service = new MarketplaceFeeService(configRepository);
+        when(configRepository.saveAndFlush(any(MarketplaceFeeConfig.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.update(new UpdateMarketplaceFeeRequest(new BigDecimal("6.666")), "  ");
+
+        assertEquals(new BigDecimal("6.67"), response.feeRate());
+        assertEquals("system", response.changedBy());
     }
 }
