@@ -2,6 +2,8 @@ package org.example.controller;
 
 import org.example.dto.CatalogProductResponse;
 import org.example.dto.CatalogStoreResponse;
+import org.example.dto.CatalogPageResponse;
+import org.example.dto.CatalogFilterOptionsResponse;
 import org.example.model.Product;
 import org.example.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
@@ -108,6 +110,14 @@ class ProductControllerTest {
     }
 
     @Test
+    void getProductOffers_whenFoundWithNoOffers_returnsEmptyBodyList() {
+        when(productService.getProductOffers(3)).thenReturn(Optional.of(List.of()));
+        ResponseEntity<List<CatalogProductResponse>> response = productController.getProductOffers(3);
+        assertNotNull(response.getBody());
+        assertEquals(0, response.getBody().size());
+    }
+
+    @Test
     void createProduct_savesAndReturnsProduct() {
         Product input = new Product();
         input.setProName("Pikachu");
@@ -134,5 +144,32 @@ class ProductControllerTest {
         assertEquals(1, response.getBody().size());
         assertEquals("Pikachu", response.getBody().get(0).name());
         verify(productService).searchProducts("Pikachu");
+    }
+
+    @Test
+    void catalog_rejectsInvalidBoundsPagingSourceAndSort() {
+        assertEquals(400, productController.catalog("", null, null, -1d, null, null, null, null, "newest", 0, 24).getStatusCode().value());
+        assertEquals(400, productController.catalog("", null, null, null, -1d, null, null, null, "newest", 0, 24).getStatusCode().value());
+        assertEquals(400, productController.catalog("", null, null, 10d, 1d, null, null, null, "newest", 0, 24).getStatusCode().value());
+        assertEquals(400, productController.catalog("", null, null, null, null, null, "OTHER", null, "newest", 0, 24).getStatusCode().value());
+        assertEquals(400, productController.catalog("", null, null, null, null, null, "OFFICIAL", null, "unknown", 0, 24).getStatusCode().value());
+        assertEquals(400, productController.catalog("", null, null, null, null, null, null, null, "newest", -1, 24).getStatusCode().value());
+        assertEquals(400, productController.catalog("", null, null, null, null, null, null, null, "newest", 0, 0).getStatusCode().value());
+        assertEquals(400, productController.catalog("", null, null, null, null, null, null, null, "newest", 0, 101).getStatusCode().value());
+    }
+
+    @Test
+    void catalog_andFilterOptions_delegateValidRequests() {
+        when(productService.catalog("Pika", "Single", "Pokemon", 1d, 100d, "English", "OFFICIAL", 2, "price_asc", 1, 12))
+                .thenReturn(new CatalogPageResponse(List.of(), 1, 12, 0, 0, "price_asc"));
+        ResponseEntity<CatalogPageResponse> page = productController.catalog("Pika", "Single", "Pokemon", 1d, 100d,
+                "English", "OFFICIAL", 2, "price_asc", 1, 12);
+        assertEquals(200, page.getStatusCode().value());
+        verify(productService).catalog("Pika", "Single", "Pokemon", 1d, 100d, "English", "OFFICIAL", 2, "price_asc", 1, 12);
+
+        CatalogFilterOptionsResponse options = new CatalogFilterOptionsResponse(
+                List.of(), List.of(), List.of(), List.of(), List.of(), new CatalogFilterOptionsResponse.PriceRange(null, null));
+        when(productService.filterOptions()).thenReturn(options);
+        assertEquals(options, productController.catalogFilterOptions().getBody());
     }
 }

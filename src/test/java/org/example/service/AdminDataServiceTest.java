@@ -269,4 +269,179 @@ class AdminDataServiceTest {
         assertEquals(1, pendingOnly.size());
         assertEquals(2, pendingOnly.get(0).storeId());
     }
+
+    @Test
+    void officialProductUpdates_validateRequestAndVisibility() {
+        CardGame game = new CardGame();
+        game.setGameId(4);
+        game.setGameName("Pokemon");
+        Product product = new Product();
+        product.setProId(4);
+        product.setListingSource("OFFICIAL");
+        when(productRepository.findByProId(4)).thenReturn(Optional.of(product));
+        when(cardGameRepository.findByGameNameIgnoreCase("Pokemon")).thenReturn(Optional.of(game));
+        when(productRepository.saveAndFlush(product)).thenReturn(product);
+
+        AdminData.ProductRequest request = new AdminData.ProductRequest(
+                " Updated card ", " Pokemon ", " Single ", 0d, 20d, 0,
+                " ", " Set ", " English ", " Description "
+        );
+        AdminData.ProductResponse updated = adminDataService.updateOfficialProduct(4, request);
+        assertEquals("Updated card", updated.name());
+        assertEquals("OFFICIAL", updated.listingSource());
+        assertNull(updated.imageUrl());
+        assertEquals("Set", updated.productSet());
+
+        assertFalse(adminDataService.updateOfficialProductActive(4, false).active());
+        assertThrows(ResponseStatusException.class, () -> adminDataService.updateOfficialProductActive(4, null));
+        verify(productRepository, atLeast(2)).saveAndFlush(product);
+    }
+
+    @Test
+    void officialProductValidation_rejectsMalformedRequestsAndNonOfficialProducts() {
+        Product marketplace = new Product();
+        marketplace.setProId(8);
+        marketplace.setListingSource("MARKETPLACE");
+        when(productRepository.findByProId(8)).thenReturn(Optional.of(marketplace));
+        assertThrows(ResponseStatusException.class, () -> adminDataService.updateOfficialProduct(8, validRequest()));
+        assertThrows(ResponseStatusException.class, () -> adminDataService.updateOfficialProduct(999, validRequest()));
+        assertThrows(ResponseStatusException.class, () -> adminDataService.updateOfficialProductActive(8, true));
+
+        assertBadRequest(() -> adminDataService.createOfficialProduct(null));
+        assertBadRequest(() -> adminDataService.createOfficialProduct(new AdminData.ProductRequest(
+                " ", "Pokemon", "Single", 1d, 1d, 1, null, null, null, null)));
+        assertBadRequest(() -> adminDataService.createOfficialProduct(new AdminData.ProductRequest(
+                "Card", "Pokemon", " ", 1d, 1d, 1, null, null, null, null)));
+        assertBadRequest(() -> adminDataService.createOfficialProduct(new AdminData.ProductRequest(
+                "Card", "Pokemon", "Single", -1d, 1d, 1, null, null, null, null)));
+        assertBadRequest(() -> adminDataService.createOfficialProduct(new AdminData.ProductRequest(
+                "Card", "Pokemon", "Single", 1d, -1d, 1, null, null, null, null)));
+        assertBadRequest(() -> adminDataService.createOfficialProduct(new AdminData.ProductRequest(
+                "Card", "Pokemon", "Single", 1d, 1d, -1, null, null, null, null)));
+        when(cardGameRepository.findByGameNameIgnoreCase("Pokemon")).thenReturn(Optional.empty());
+        assertBadRequest(() -> adminDataService.createOfficialProduct(validRequest()));
+    }
+
+    @Test
+    void orderAndStoreLookups_coverFoundMissingAndSourceValidation() {
+        Order order = new Order();
+        order.setOrderId(11);
+        order.setUserId(21);
+        order.setStatus("DELIVERED");
+        order.setItems(List.of());
+        when(orderRepository.findById(11)).thenReturn(Optional.of(order));
+        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of());
+        when(userRepository.findAll()).thenReturn(List.of());
+        assertEquals("Delivered", adminDataService.getOrder(11).status());
+        assertThrows(ResponseStatusException.class, () -> adminDataService.getOrder(404));
+        assertThrows(ResponseStatusException.class, () -> adminDataService.getOrders("unexpected"));
+        assertEquals(0, adminDataService.getOrders(null).size());
+
+        MarketplaceStore store = new MarketplaceStore();
+        store.setStoreId(5);
+        store.setStoreStatus("APPROVED");
+        when(storeRepository.findByStoreId(5)).thenReturn(Optional.of(store));
+        when(storeRepository.findAll()).thenReturn(List.of(store));
+        when(productRepository.findByListingSourceOrderByProIdDesc("MARKETPLACE")).thenReturn(List.of());
+        assertEquals(5, adminDataService.getStore(5).storeId());
+        assertThrows(ResponseStatusException.class, () -> adminDataService.getStore(404));
+        assertEquals(1, adminDataService.getStores(null).size());
+        assertEquals(1, adminDataService.getStores("ALL").size());
+        assertEquals(1, adminDataService.getStores(" ").size());
+    }
+
+    @Test
+    void marketplaceProducts_filterByStoreAndRejectWrongSource() {
+        MarketplaceStore store = new MarketplaceStore();
+        store.setStoreId(7);
+        store.setStoreName("Store");
+        Product marketplace = new Product();
+        marketplace.setProId(7);
+        marketplace.setProName("Market card");
+        marketplace.setListingSource("MARKETPLACE");
+        marketplace.setStore(store);
+        Product withoutStore = new Product();
+        withoutStore.setProId(8);
+        withoutStore.setListingSource("MARKETPLACE");
+        Product official = new Product();
+        official.setProId(9);
+        official.setListingSource("OFFICIAL");
+        when(productRepository.findByListingSourceOrderByProIdDesc("MARKETPLACE"))
+                .thenReturn(List.of(marketplace, withoutStore));
+        assertEquals(2, adminDataService.getMarketplaceProducts(null).size());
+        assertEquals(1, adminDataService.getMarketplaceProducts(7).size());
+        when(productRepository.findByProId(7)).thenReturn(Optional.of(marketplace));
+        assertEquals(7, adminDataService.getMarketplaceProduct(7).id());
+        when(productRepository.findByProId(9)).thenReturn(Optional.of(official));
+        assertThrows(ResponseStatusException.class, () -> adminDataService.getMarketplaceProduct(9));
+    }
+
+    @Test
+    void smartRestockPredictions_coverNoSalesUrgentOutOfStockAndSufficientStock() {
+        Product noSales = officialProduct(1, "No sales", 5, true);
+        Product urgent = officialProduct(2, "Urgent", 1, true);
+        Product out = officialProduct(3, "Out", 0, true);
+        Product sufficient = officialProduct(4, "Sufficient", 100, true);
+        Product inactive = officialProduct(5, "Inactive", 1, false);
+        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(noSales, urgent, out, sufficient, inactive));
+        Order sales = new Order();
+        org.example.model.OrderItem item = new org.example.model.OrderItem();
+        item.setProductId(2);
+        item.setQuantity(30);
+        sales.setItems(List.of(item));
+        Order manySales = new Order();
+        org.example.model.OrderItem item2 = new org.example.model.OrderItem();
+        item2.setProductId(3);
+        item2.setQuantity(1);
+        manySales.setItems(List.of(item2));
+        Order enoughSales = new Order();
+        org.example.model.OrderItem item3 = new org.example.model.OrderItem();
+        item3.setProductId(4);
+        item3.setQuantity(1);
+        enoughSales.setItems(List.of(item3));
+        when(orderRepository.findByCreatedAtBetween(any(), any())).thenReturn(List.of(sales, manySales, enoughSales));
+
+        List<AdminData.RestockPredictionResponse> results = adminDataService.getSmartRestockPredictions();
+        assertEquals(4, results.size());
+        assertEquals("There is not enough information.", results.get(0).statusMessage());
+        assertEquals("Restock immediately!", results.get(1).statusMessage());
+        assertEquals("Out of stock!", results.get(2).statusMessage());
+        assertEquals("Stock is still sufficient.", results.get(3).statusMessage());
+    }
+
+    @Test
+    void orderStatusValidation_coversMissingAndAlreadyShippedBranches() {
+        assertBadRequest(() -> adminDataService.updateOrderStatus(1, "UNKNOWN", null));
+        when(orderRepository.findById(99)).thenReturn(Optional.empty());
+        assertThrows(ResponseStatusException.class, () -> adminDataService.updateOrderStatus(99, "DELIVERED", null));
+        Order shipped = new Order();
+        shipped.setOrderId(3);
+        shipped.setStatus("SHIPPED");
+        shipped.setItems(List.of());
+        when(orderRepository.findById(3)).thenReturn(Optional.of(shipped));
+        when(orderRepository.saveAndFlush(shipped)).thenReturn(shipped);
+        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of());
+        when(userRepository.findAll()).thenReturn(List.of());
+        assertEquals("Shipped", adminDataService.updateOrderStatus(3, "SHIPPED", null).status());
+        verify(notificationService, never()).createShippingNotification(any());
+    }
+
+    private AdminData.ProductRequest validRequest() {
+        return new AdminData.ProductRequest("Card", "Pokemon", "Single", 1d, 2d, 3, null, null, null, null);
+    }
+
+    private Product officialProduct(int id, String name, int stock, boolean active) {
+        Product product = new Product();
+        product.setProId(id);
+        product.setProName(name);
+        product.setListingSource("OFFICIAL");
+        product.setProQuantity(stock);
+        product.setIsActive(active);
+        return product;
+    }
+
+    private void assertBadRequest(org.junit.jupiter.api.function.Executable executable) {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, executable);
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
 }

@@ -20,8 +20,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.util.Optional;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -221,5 +223,41 @@ class SellerServiceTest {
         sellerService.deleteProduct("seller@example.test", 12);
 
         verify(productDeletionService).permanentlyDelete(listing);
+    }
+
+    @Test
+    void readsCatalogAndUpdatesOwnListingWithoutTemplate() {
+        User seller = new User(); seller.setUaId(7); seller.setEmail("seller@example.test"); seller.setRole("SELLER");
+        MarketplaceStore store = new MarketplaceStore(); store.setStoreId(9); store.setStoreName("Independent TCG"); store.setStoreStatus("APPROVED");
+        Product listing = new Product(); listing.setProId(12); listing.setStore(store); listing.setListingSource("MARKETPLACE"); listing.setIsActive(true); listing.setProName("Old"); listing.setProPriceOfSell(10d); listing.setProQuantity(2);
+        CardGame game = new CardGame(); game.setGameId(3); game.setGameName("Pokemon");
+        when(userRepository.findByEmail("seller@example.test")).thenReturn(Optional.of(seller));
+        when(storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(7)).thenReturn(Optional.of(store));
+        when(productRepository.findByStore_StoreIdOrderByProIdDesc(9)).thenReturn(List.of(listing));
+        when(productRepository.findByProIdAndStore_StoreId(12, 9)).thenReturn(Optional.of(listing));
+        when(productRepository.saveAndFlush(listing)).thenReturn(listing);
+        when(cardGameRepository.findByGameNameIgnoreCase("Pokemon")).thenReturn(Optional.of(game));
+        when(cardGameRepository.findAllByOrderByGameNameAsc()).thenReturn(List.of(game));
+        when(orderRepository.findByStoreIdOrderByCreatedAtDesc(9)).thenReturn(List.of());
+        assertEquals(1, sellerService.getProducts("seller@example.test").size());
+        assertEquals(1, sellerService.getCardGames().size());
+        assertEquals(0, sellerService.getOrders("seller@example.test").size());
+        SellerProductRequest request = new SellerProductRequest("New", "Pokemon", "Single", 5d, 12d, 3, null, "", "", "desc", null);
+        assertEquals("New", sellerService.updateProduct("seller@example.test", 12, request).name());
+        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
+                () -> sellerService.updateProductActive("seller@example.test", 12, null)).getStatusCode());
+    }
+
+    @Test
+    void requireApprovedStoreRejectsMissingAndPendingStores() {
+        when(userRepository.findByEmail("missing@test")).thenReturn(Optional.empty());
+        assertEquals(HttpStatus.UNAUTHORIZED, assertThrows(ResponseStatusException.class,
+                () -> sellerService.requireApprovedStore("missing@test")).getStatusCode());
+        User seller = new User(); seller.setUaId(7);
+        MarketplaceStore pending = new MarketplaceStore(); pending.setStoreId(9); pending.setStoreStatus("PENDING");
+        when(userRepository.findByEmail("seller@example.test")).thenReturn(Optional.of(seller));
+        when(storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(7)).thenReturn(Optional.of(pending));
+        assertEquals(HttpStatus.FORBIDDEN, assertThrows(ResponseStatusException.class,
+                () -> sellerService.requireApprovedStore("seller@example.test")).getStatusCode());
     }
 }

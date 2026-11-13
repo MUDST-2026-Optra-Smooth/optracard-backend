@@ -13,10 +13,15 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
@@ -198,6 +203,129 @@ class PromotionServiceTest {
                         10d, null, 0d, null, null, sameMoment, sameMoment, true)));
 
         assertEquals("Promotion end date must be after its start date", dateException.getReason());
+    }
+
+    @Test
+    void listsGetsUpdatesAndDeletesPromotions() {
+        Promotion existing = promotion("SAVE10", "PERCENTAGE", 10d);
+        existing.setPromotionId(1);
+        when(promotionRepository.findAllByOrderByEndsAtDesc()).thenReturn(List.of(existing));
+        assertEquals(1, promotionService.getPromotions().size());
+
+        when(promotionRepository.findById(1)).thenReturn(Optional.of(existing));
+        assertEquals("SAVE10", promotionService.getPromotion(1).code());
+
+        PromotionRequest request = validRequest("NEWCODE", "NEW NAME", "FIXED_AMOUNT", 25d);
+        when(promotionRepository.findByCodeIgnoreCase("NEWCODE")).thenReturn(Optional.empty());
+        when(promotionRepository.saveAndFlush(existing)).thenReturn(existing);
+        assertEquals("NEWCODE", promotionService.updatePromotion(1, request).code());
+        verify(promotionRepository).saveAndFlush(existing);
+
+        promotionService.deletePromotion(1);
+        verify(promotionRepository).delete(existing);
+
+        when(promotionRepository.findById(404)).thenReturn(Optional.empty());
+        ResponseStatusException missing = assertThrows(ResponseStatusException.class,
+                () -> promotionService.getPromotion(404));
+        assertEquals(404, missing.getStatusCode().value());
+    }
+
+    @Test
+    void rejectsDuplicateCodesOnCreateAndUpdate() {
+        when(promotionRepository.existsByCodeIgnoreCase("SAVE10")).thenReturn(true);
+        ResponseStatusException createException = assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(validRequest("save10", "Duplicate", "PERCENTAGE", 10d)));
+        assertEquals(409, createException.getStatusCode().value());
+
+        Promotion existing = promotion("SAVE10", "PERCENTAGE", 10d);
+        existing.setPromotionId(1);
+        Promotion other = promotion("DUPLICATE", "PERCENTAGE", 10d);
+        other.setPromotionId(2);
+        when(promotionRepository.findById(1)).thenReturn(Optional.of(existing));
+        when(promotionRepository.findByCodeIgnoreCase("DUPLICATE")).thenReturn(Optional.of(other));
+        ResponseStatusException updateException = assertThrows(ResponseStatusException.class,
+                () -> promotionService.updatePromotion(1, validRequest("duplicate", "Duplicate", "PERCENTAGE", 10d)));
+        assertEquals(409, updateException.getStatusCode().value());
+    }
+
+    @Test
+    void supportsBlankCheckoutAndRejectsUnknownCodes() {
+        var none = promotionService.applyForCheckout("  ", 7, 100d);
+        assertFalse(none.isApplied());
+        verify(promotionRepository, never()).findByCodeForUpdate(anyString());
+
+        when(promotionRepository.findByCodeForUpdate("UNKNOWN")).thenReturn(Optional.empty());
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> promotionService.applyForCheckout("unknown", 7, 100d));
+        assertEquals("Promotion code is invalid", exception.getReason());
+    }
+
+    @Test
+    void coversValidationRulesForPromotionRequests() {
+        lenient().when(promotionRepository.existsByCodeIgnoreCase(anyString())).thenReturn(false);
+        LocalDateTime start = now().minusHours(1);
+        LocalDateTime end = now().plusDays(1);
+
+        assertEquals("Promotion code is required", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(null)).getReason());
+        assertEquals("Promotion code is required", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest(" ", "Name", "PERCENTAGE", 10d, null, null, null, null, start, end, true))).getReason());
+        assertEquals("Promotion code must use 3-50 uppercase letters, numbers, hyphens, or underscores", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("NO!", "Name", "PERCENTAGE", 10d, null, null, null, null, start, end, true))).getReason());
+        assertEquals("Promotion name is required", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", " ", "PERCENTAGE", 10d, null, null, null, null, start, end, true))).getReason());
+        assertEquals("Discount type is required", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", "Name", " ", 10d, null, null, null, null, start, end, true))).getReason());
+        assertEquals("Discount type must be PERCENTAGE or FIXED_AMOUNT", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", "Name", "OTHER", 10d, null, null, null, null, start, end, true))).getReason());
+        assertEquals("Discount value is required", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", "Name", "PERCENTAGE", null, null, null, null, null, start, end, true))).getReason());
+        assertEquals("Discount value is required", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", "Name", "PERCENTAGE", Double.NaN, null, null, null, null, start, end, true))).getReason());
+        assertEquals("Discount value must be greater than zero", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", "Name", "PERCENTAGE", 0d, null, null, null, null, start, end, true))).getReason());
+        assertEquals("Discount value is required", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", "Name", "PERCENTAGE", -1d, null, null, null, null, start, end, true))).getReason());
+        assertEquals("Maximum discount must be zero or more", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", "Name", "PERCENTAGE", 10d, -1d, null, null, null, start, end, true))).getReason());
+        assertEquals("Minimum order amount must be zero or more", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", "Name", "PERCENTAGE", 10d, null, -1d, null, null, start, end, true))).getReason());
+        assertEquals("Usage limit must be at least 1", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", "Name", "PERCENTAGE", 10d, null, null, 0, null, start, end, true))).getReason());
+        assertEquals("Per-customer limit must be at least 1", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", "Name", "PERCENTAGE", 10d, null, null, null, 0, start, end, true))).getReason());
+        assertEquals("Promotion start and end dates are required", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", "Name", "PERCENTAGE", 10d, null, null, null, null, null, end, true))).getReason());
+        assertEquals("Promotion start and end dates are required", assertThrows(ResponseStatusException.class,
+                () -> promotionService.createPromotion(new PromotionRequest("VALID", "Name", "PERCENTAGE", 10d, null, null, null, null, start, null, true))).getReason());
+    }
+
+    @Test
+    void coversDiscountCapsNullCountsAndResponseRounding() {
+        Promotion percentage = promotion("PCT", "PERCENTAGE", 12.345d);
+        percentage.setUsageCount(null);
+        percentage.setUsageLimit(5);
+        percentage.setMaximumDiscountAmount(null);
+        percentage.setPromotionId(5);
+        when(promotionRepository.findByCodeForUpdate("PCT")).thenReturn(Optional.of(percentage));
+
+        var result = promotionService.applyForCheckout("pct", 7, 100d);
+        assertTrue(result.isApplied());
+        assertEquals(12.35d, result.discountAmount());
+        assertEquals(1, percentage.getUsageCount());
+
+        Promotion fixed = promotion("FIXED", "FIXED_AMOUNT", 200d);
+        fixed.setPromotionId(6);
+        fixed.setUsageCount(0);
+        when(promotionRepository.findByCodeIgnoreCase("FIXED")).thenReturn(Optional.of(fixed));
+        var preview = promotionService.preview(7, "fixed", 500d);
+        assertEquals(200d, preview.discountAmount());
+        assertEquals(300d, preview.discountedSubtotal());
+    }
+
+    private PromotionRequest validRequest(String code, String name, String type, double value) {
+        return new PromotionRequest(code, name, type, value, null, 0d, null, null,
+                now().minusHours(1), now().plusDays(1), true);
     }
 
     private Promotion promotion(String code, String type, double value) {
