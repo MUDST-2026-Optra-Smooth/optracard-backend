@@ -12,15 +12,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
@@ -208,5 +211,55 @@ class ProductServiceTest {
         assertEquals("MARKETPLACE", offers.get(0).source());
         assertEquals("AAA-Trading", offers.get(0).store().name());
         assertEquals("OFFICIAL", offers.get(1).source());
+    }
+
+    @Test
+    void publicCatalogOperations_coverVisibilityProfilesFiltersAndPaging() {
+        CardGame game = new CardGame();
+        game.setGameId(4);
+        game.setGameName("Pokemon");
+        MarketplaceStore approved = new MarketplaceStore();
+        approved.setStoreId(8);
+        approved.setStoreName("Approved Store");
+        approved.setStoreSlug("approved-store");
+        approved.setStoreStatus("APPROVED");
+        approved.setStoreDescription("Cards");
+        approved.setDistrict("Bang Rak");
+        approved.setProvince("Bangkok");
+
+        Product official = new Product();
+        official.setProId(20); official.setProName("Pikachu"); official.setProType("Single");
+        official.setCardGame(game); official.setProPriceOfSell(99.0); official.setProQuantity(2);
+        official.setIsActive(true); official.setListingSource("OFFICIAL"); official.setLanguage("English");
+        Product marketplace = marketplaceProduct(21, approved, "APPROVED", true);
+        marketplace.setCardGame(game); marketplace.setProType("Single"); marketplace.setProPriceOfSell(120.0);
+        Product hidden = marketplaceProduct(22, approved, "PENDING", true);
+        when(productRepository.findByIsActiveTrueOrderByProTypeAscProIdAsc()).thenReturn(List.of(official, marketplace, hidden));
+        when(productRepository.findByProId(20)).thenReturn(Optional.of(official));
+        when(productRepository.findByProId(22)).thenReturn(Optional.of(hidden));
+        assertEquals(2, productService.getAllProducts().size());
+        assertEquals("Pikachu", productService.getProductById(20).orElseThrow().name());
+        assertEquals(0, productService.getProductById(22).stream().count());
+
+        when(marketplaceStoreRepository.findByStoreId(8)).thenReturn(Optional.of(approved));
+        when(productRepository.findByStore_StoreIdOrderByProIdDesc(8)).thenReturn(List.of(marketplace, hidden));
+        var profile = productService.getMarketplaceStoreProfile(8).orElseThrow();
+        assertEquals("Bang Rak, Bangkok", profile.location());
+        assertEquals(1, profile.products().size());
+
+        when(productRepository.findPublicCatalogTypes()).thenReturn(Arrays.asList("Single", null, "Booster"));
+        when(productRepository.findPublicCatalogGames()).thenReturn(List.<Object[]>of(new Object[]{2, "One Piece"}, new Object[]{1, "Pokemon"}));
+        when(productRepository.findPublicCatalogLanguages()).thenReturn(Arrays.asList("Japanese", null));
+        when(productRepository.findPublicCatalogSources()).thenReturn(Arrays.asList("MARKETPLACE", null));
+        when(productRepository.findPublicCatalogStores()).thenReturn(List.<Object[]>of(new Object[]{8, "Approved Store"}));
+        when(productRepository.findPublicCatalogPriceRange()).thenReturn(new Object[]{10, 500});
+        assertEquals(2, productService.filterOptions().types().size());
+
+        var page = new PageImpl<>(List.of(official));
+        when(productRepository.findAll(any(Specification.class), any(PageRequest.class))).thenReturn(page);
+        assertEquals(1, productService.catalog(null, null, null, null, null, null, null, null, "newest", 0, 24).items().size());
+        Product saved = new Product();
+        when(productRepository.save(saved)).thenReturn(saved);
+        assertEquals(saved, productService.createProduct(saved));
     }
 }
