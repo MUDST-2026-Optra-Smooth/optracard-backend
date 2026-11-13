@@ -72,7 +72,7 @@ public class StockAlertService {
         User user = currentUser(email);
         StockAlert alert = alertRepository.findById(alertId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Stock alert not found"));
-        Product product = productRepository.findByProId(alert.getProductId())
+        Product product = productRepository.findByIdForUpdate(alert.getProductId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Product not found"));
         requireProductAccess(user, product);
         if (read) {

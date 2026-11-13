@@ -169,7 +169,7 @@ class StockAlertServiceTest {
         Product official = product(1, "Official", 0, "OFFICIAL", null, true, "APPROVED");
         StockAlert alert = activeAlert(801, 1, StockAlert.OUT_OF_STOCK, 0);
         when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(admin));
-        when(productRepository.findByProId(1)).thenReturn(Optional.of(official));
+        when(productRepository.findByIdForUpdate(1)).thenReturn(Optional.of(official));
         when(alertRepository.findById(801)).thenReturn(Optional.of(alert));
         when(readRepository.findByAlertIdAndUserId(801, 1)).thenReturn(Optional.empty());
         service.markRead("admin@example.com", 801, true);
@@ -207,7 +207,7 @@ class StockAlertServiceTest {
 
         when(userRepository.findByEmail("seller@example.com")).thenReturn(Optional.of(seller));
         when(alertRepository.findById(301)).thenReturn(Optional.of(alert));
-        when(productRepository.findByProId(1)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdForUpdate(1)).thenReturn(Optional.of(product));
         when(storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(7)).thenReturn(Optional.of(ownStore));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
