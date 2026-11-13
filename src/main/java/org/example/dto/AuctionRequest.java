@@ -23,14 +23,26 @@ public record AuctionRequest(
         @Schema(description = "Starting bid price in THB", example = "15000.00")
         Double startingPrice,
 
+        @Schema(description = "Minimum amount added to the current bid for this auction, in THB", example = "100.00")
+        Double bidIncrement,
+
         @Schema(description = "Auction start timestamp (ISO-8601)", example = "2026-11-15T12:00:00")
         LocalDateTime startsAt,
 
         @Schema(description = "Auction closing timestamp (ISO-8601)", example = "2026-11-20T20:00:00")
         LocalDateTime endsAt
-, Integer productId, String cardCondition, String grading, java.util.List<String> evidenceImages
+, Integer productId, String cardCondition, String grading, java.util.List<String> evidenceImages,
+        String productSet, String language
 ) {
  public AuctionRequest(String title,Integer gameId,String type,String imageUrl,String description,Double startingPrice,LocalDateTime startsAt,LocalDateTime endsAt) {
-  this(title,gameId,type,imageUrl,description,startingPrice,startsAt,endsAt,null,null,null,java.util.List.of());
+  this(title,gameId,type,imageUrl,description,startingPrice,null,startsAt,endsAt,null,null,null,java.util.List.of(),null,null);
+ }
+ public AuctionRequest(String title,Integer gameId,String type,String imageUrl,String description,Double startingPrice,LocalDateTime startsAt,LocalDateTime endsAt,
+                       Integer productId,String cardCondition,String grading,java.util.List<String> evidenceImages) {
+  this(title,gameId,type,imageUrl,description,startingPrice,null,startsAt,endsAt,productId,cardCondition,grading,evidenceImages,null,null);
+ }
+ public AuctionRequest(String title,Integer gameId,String type,String imageUrl,String description,Double startingPrice,LocalDateTime startsAt,LocalDateTime endsAt,
+                       Integer productId,String cardCondition,String grading,java.util.List<String> evidenceImages,String productSet,String language) {
+  this(title,gameId,type,imageUrl,description,startingPrice,null,startsAt,endsAt,productId,cardCondition,grading,evidenceImages,productSet,language);
  }
 }

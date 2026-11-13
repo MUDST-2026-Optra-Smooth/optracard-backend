@@ -552,6 +552,35 @@ existing local database retains its users and credentials. On an empty database,
 the local catalog seeds games and Official products only. Marketplace stores and
 products are created only when their seller already exists.
 
+### Resetting local auction demos
+
+Auction data is never seeded automatically. To reset only the local auction
+records while keeping users, stores, games, and products, run the following
+against the local Docker database:
+
+```powershell
+.\scripts\reset-local-auctions.ps1 -Apply
+```
+
+The command applies the additive auction migrations first, returns reserved
+stock, and removes auction bids/events plus auction-checkout orders in one
+transaction. It does not touch non-auction orders or account data.
+
+To create the three documented local demo lots through the normal authenticated
+API lifecycle, run the following and enter the requested passwords only at the
+hidden prompts:
+
+```powershell
+.\scripts\create-local-auction-demos.ps1 `
+  -AdminEmail '<admin email>' `
+  -CardCornerSellerEmail '<card corner seller email>' `
+  -RareFindsSellerEmail '<rare finds seller email>'
+```
+
+The script creates one Official and two approved Marketplace auctions, each
+linked to and reserving exactly one inventory product for 72 hours. It refuses
+to run if auctions already exist, preventing accidental duplicate demos.
+
 ---
 
 ## Containerization & Docker Deployment

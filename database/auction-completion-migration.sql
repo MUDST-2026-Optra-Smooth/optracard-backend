@@ -9,6 +9,8 @@ ALTER TABLE auctions ADD COLUMN IF NOT EXISTS product_was_active boolean;
 ALTER TABLE auctions ADD COLUMN IF NOT EXISTS card_condition varchar(80);
 ALTER TABLE auctions ADD COLUMN IF NOT EXISTS grading varchar(100);
 ALTER TABLE auctions ADD COLUMN IF NOT EXISTS evidence_images text;
+ALTER TABLE auctions ADD COLUMN IF NOT EXISTS auction_product_set varchar(120);
+ALTER TABLE auctions ADD COLUMN IF NOT EXISTS auction_language varchar(40);
 ALTER TABLE products ADD COLUMN IF NOT EXISTS auction_reserved boolean DEFAULT false;
 CREATE TABLE IF NOT EXISTS auction_settings (
  id integer PRIMARY KEY, bid_increment double precision NOT NULL DEFAULT 50,
