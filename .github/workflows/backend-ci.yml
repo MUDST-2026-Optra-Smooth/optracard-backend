@@ -103,10 +103,37 @@ jobs:
 
       - name: Build and push backend image
         run: |
-          docker build -t "$($env:IMAGE_OWNER)/optracard-backend:${{ github.sha }}" .
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          docker push "$($env:IMAGE_OWNER)/optracard-backend:${{ github.sha }}"
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $image = "$($env:IMAGE_OWNER)/optracard-backend:${{ github.sha }}"
+
+          function Invoke-DockerWithRetry {
+            param(
+              [Parameter(Mandatory = $true)][string]$Operation,
+              [Parameter(Mandatory = $true)][scriptblock]$Command,
+              [int]$Attempts = 3
+            )
+
+            for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+              Write-Host "Docker $Operation (attempt $attempt/$Attempts)"
+              & $Command
+              if ($LASTEXITCODE -eq 0) { return }
+
+              if ($attempt -eq $Attempts) {
+                throw "Docker $Operation failed after $Attempts attempts. Check Docker Desktop network/DNS access to Docker Hub."
+              }
+
+              $delay = $attempt * 15
+              Write-Warning "Docker $Operation failed (exit code $LASTEXITCODE); retrying in $delay seconds."
+              Start-Sleep -Seconds $delay
+            }
+          }
+
+          Invoke-DockerWithRetry -Operation 'build' -Command {
+            docker build -t $image .
+          }
+
+          Invoke-DockerWithRetry -Operation 'push' -Command {
+            docker push $image
+          }
 
       - name: Apply manifest and roll out backend
         run: |
