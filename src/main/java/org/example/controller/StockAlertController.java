@@ -10,6 +10,7 @@ import org.example.dto.StockAlertResponse;
 import org.example.dto.StockAlertSettingsRequest;
 import org.example.dto.StockAlertSettingsResponse;
 import org.example.service.StockAlertService;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -36,7 +37,7 @@ public class StockAlertController {
 
     @Operation(
             summary = "Get active stock alerts",
-            description = "Retrieve low stock and out-of-stock alert notifications scoped to seller's store or admin official inventory."
+            description = "Recheck inventory and return all active stock alerts for the seller's store or admin's official inventory."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Stock alerts list retrieved successfully"),
@@ -44,8 +45,10 @@ public class StockAlertController {
             @ApiResponse(responseCode = "403", description = "Forbidden - requires SELLER or ADMIN role")
     })
     @GetMapping
-    public List<StockAlertResponse> alerts(Authentication authentication) {
-        return stockAlertService.getAlerts(authentication.getName());
+    public ResponseEntity<List<StockAlertResponse>> alerts(Authentication authentication) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(stockAlertService.getAlerts(authentication.getName()));
     }
 
     @Operation(
@@ -115,11 +118,11 @@ public class StockAlertController {
 
     @Operation(
             summary = "Update stock alert threshold settings",
-            description = "Update low-stock quantity threshold trigger value for the store."
+            description = "Save the stock threshold and recalculate alerts for the seller's store or admin's official inventory."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Stock alert settings updated successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid threshold value (must be >= 0)"),
+            @ApiResponse(responseCode = "400", description = "Threshold must be between 1 and 100,000"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - authentication required"),
             @ApiResponse(responseCode = "403", description = "Forbidden - requires SELLER or ADMIN role")
     })

@@ -39,7 +39,7 @@ public class StockAlert {
     @Column(name = "threshold", nullable = false)
     private Integer threshold;
 
-    @Column(name = "activated_at", nullable = false, updatable = false)
+    @Column(name = "activated_at", nullable = false)
     private LocalDateTime activatedAt;
 
     @Column(name = "updated_at", nullable = false)

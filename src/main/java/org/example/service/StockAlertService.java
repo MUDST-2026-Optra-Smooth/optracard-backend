@@ -23,13 +23,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class StockAlertService {
@@ -72,7 +72,7 @@ public class StockAlertService {
         User user = currentUser(email);
         StockAlert alert = alertRepository.findById(alertId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Stock alert not found"));
-        Product product = productRepository.findByProId(alert.getProductId())
+        Product product = productRepository.findByIdForUpdate(alert.getProductId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Product not found"));
         requireProductAccess(user, product);
         if (read) {
@@ -115,7 +115,9 @@ public class StockAlertService {
         User user = currentUser(email);
         int threshold = validateThreshold(request == null ? null : request.defaultThreshold());
         String role = roleOf(user);
+        List<Product> products;
         if ("ADMIN".equals(role)) {
+            products = productRepository.findOfficialStockForUpdate();
             StockAlertSettings settings = settingsRepository.findById(StockAlertSettings.SETTINGS_ID)
                     .orElseGet(() -> {
                         StockAlertSettings created = new StockAlertSettings();
@@ -126,6 +128,7 @@ public class StockAlertService {
             settingsRepository.save(settings);
         } else if ("SELLER".equals(role)) {
             MarketplaceStore store = approvedStore(user);
+            products = productRepository.findStoreStockForUpdate(store.getStoreId());
             StockAlertStoreSettings settings = storeSettingsRepository.findById(store.getStoreId())
                     .orElseGet(() -> {
                         StockAlertStoreSettings created = new StockAlertStoreSettings();
@@ -137,6 +140,7 @@ public class StockAlertService {
         } else {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Stock alert settings are not available for this account");
         }
+        syncProducts(products, threshold);
         return new StockAlertSettingsResponse(threshold);
     }
 
@@ -154,7 +158,8 @@ public class StockAlertService {
             readsByAlertId.put(read.getAlertId(), read);
         }
         return activeAlerts.stream()
-                .sorted(Comparator.comparing(StockAlert::getActivatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .sorted(Comparator.comparing(StockAlert::getActivatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(StockAlert::getProductId))
                 .map(alert -> {
                     Product product = productsById.get(alert.getProductId());
                     StockAlertRead read = readsByAlertId.get(alert.getId());
@@ -175,16 +180,21 @@ public class StockAlertService {
                 alert.getActivatedAt(), alert.getUpdatedAt(), read);
     }
 
-    private void syncProducts(Collection<Product> products, int threshold) {
-        for (Product product : products) syncProduct(product, threshold);
+    private void syncProducts(List<Product> products, int threshold) {
+        List<Integer> productIds = products.stream().map(Product::getProId).filter(Objects::nonNull).toList();
+        if (productIds.isEmpty()) return;
+        Map<Integer, StockAlert> alertsByProductId = alertRepository.findByProductIdIn(productIds).stream()
+                .collect(Collectors.toMap(StockAlert::getProductId, Function.identity()));
+        for (Product product : products) {
+            syncProduct(product, threshold, alertsByProductId.get(product.getProId()));
+        }
     }
 
-    private void syncProduct(Product product, int threshold) {
+    private void syncProduct(Product product, int threshold, StockAlert alert) {
         if (product.getProId() == null) return;
         int stock = integer(product.getProQuantity());
         String currentType = stock == 0 ? StockAlert.OUT_OF_STOCK
                 : stock <= threshold ? StockAlert.LOW_STOCK : null;
-        StockAlert alert = alertRepository.findByProductId(product.getProId()).orElse(null);
         if (currentType == null) {
             if (alert != null && alert.getResolvedAt() == null) {
                 alert.setResolvedAt(LocalDateTime.now());
@@ -202,6 +212,8 @@ public class StockAlertService {
         if (newActivation) {
             alert.setActivatedAt(LocalDateTime.now());
             alert.setResolvedAt(null);
+        } else if (Objects.equals(alert.getCurrentStock(), stock) && Objects.equals(alert.getThreshold(), threshold)) {
+            return;
         }
         alert.setAlertType(currentType);
         alert.setCurrentStock(stock);
@@ -213,12 +225,10 @@ public class StockAlertService {
         String role = roleOf(user);
         if ("SELLER".equals(role)) {
             MarketplaceStore store = approvedStore(user);
-            return productRepository.findByStore_StoreIdOrderByProIdDesc(store.getStoreId());
+            return productRepository.findStoreStockForUpdate(store.getStoreId());
         }
         if ("ADMIN".equals(role)) {
-            return productRepository.findAllByOrderByProIdDesc().stream()
-                    .filter(this::isAdminVisible)
-                    .toList();
+            return productRepository.findOfficialStockForUpdate();
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Stock alerts are not available for this account");
     }

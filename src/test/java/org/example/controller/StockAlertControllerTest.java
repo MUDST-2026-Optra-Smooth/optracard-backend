@@ -37,10 +37,11 @@ class StockAlertControllerTest {
         StockAlertResponse alert = mock(StockAlertResponse.class);
         when(stockAlertService.getAlerts("seller@example.com")).thenReturn(List.of(alert));
 
-        List<StockAlertResponse> result = controller.alerts(auth);
+        ResponseEntity<List<StockAlertResponse>> result = controller.alerts(auth);
 
-        assertEquals(1, result.size());
-        assertSame(alert, result.get(0));
+        assertEquals(HttpStatus.OK, result.getStatusCode());
+        assertEquals("no-store", result.getHeaders().getCacheControl());
+        assertEquals(List.of(alert), result.getBody());
         verify(stockAlertService).getAlerts("seller@example.com");
     }
 

@@ -21,6 +21,18 @@ public interface ProductRepository extends JpaRepository<Product, Integer>, JpaS
     @Query("select p from Product p where p.proId = :id")
     Optional<Product> findByIdForUpdate(@Param("id") Integer id);
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select p from Product p
+            where p.isActive = true and (p.listingSource is null or upper(p.listingSource) <> 'MARKETPLACE')
+            order by p.proId
+            """)
+    List<Product> findOfficialStockForUpdate();
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Product p where p.store.storeId = :storeId order by p.proId")
+    List<Product> findStoreStockForUpdate(@Param("storeId") Integer storeId);
+
 
     @Override
     @EntityGraph(attributePaths = {"cardGame", "store"})

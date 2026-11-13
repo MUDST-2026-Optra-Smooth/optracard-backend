@@ -68,9 +68,8 @@ class StockAlertServiceTest {
 
         when(userRepository.findByEmail("seller@example.com")).thenReturn(Optional.of(seller));
         when(storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(7)).thenReturn(Optional.of(ownStore));
-        when(productRepository.findByStore_StoreIdOrderByProIdDesc(11)).thenReturn(List.of(low, out));
+        when(productRepository.findStoreStockForUpdate(11)).thenReturn(List.of(low, out));
         when(storeSettingsRepository.findById(11)).thenReturn(Optional.empty());
-        when(alertRepository.findByProductId(anyInt())).thenReturn(Optional.empty());
         when(readRepository.findByUserIdAndAlertIdIn(anyInt(), any())).thenReturn(List.of());
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of(
                 activeAlert(101, 1, StockAlert.LOW_STOCK, 2),
@@ -87,16 +86,11 @@ class StockAlertServiceTest {
     @Test
     void adminSeesOfficialAlertsOnly() {
         User admin = user(1, "ADMIN");
-        MarketplaceStore store = store(11, 7, "Approved Store", "APPROVED");
         Product official = product(1, "Official", 1, "OFFICIAL", null, true, "APPROVED");
-        Product marketplace = product(2, "Marketplace", 3, "MARKETPLACE", store, true, "APPROVED");
-        Product pending = product(3, "Pending", 1, "MARKETPLACE", store, true, "PENDING");
-        Product inactive = product(4, "Inactive", 1, "OFFICIAL", null, false, "APPROVED");
 
         when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(admin));
-        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(official, marketplace, pending, inactive));
+        when(productRepository.findOfficialStockForUpdate()).thenReturn(List.of(official));
         when(settingsRepository.findById(1)).thenReturn(Optional.empty());
-        when(alertRepository.findByProductId(anyInt())).thenReturn(Optional.empty());
         when(readRepository.findByUserIdAndAlertIdIn(anyInt(), any())).thenReturn(List.of());
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of(
                 activeAlert(201, 1, StockAlert.LOW_STOCK, 1)
@@ -160,9 +154,9 @@ class StockAlertServiceTest {
 
         Product healthy = product(7, "Healthy", 20, "OFFICIAL", null, true, "APPROVED");
         StockAlert existing = activeAlert(700, 7, StockAlert.LOW_STOCK, 2);
-        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(healthy));
+        when(productRepository.findOfficialStockForUpdate()).thenReturn(List.of(healthy));
         when(settingsRepository.findById(1)).thenReturn(Optional.of(settings(5)));
-        when(alertRepository.findByProductId(7)).thenReturn(Optional.of(existing));
+        when(alertRepository.findByProductIdIn(List.of(7))).thenReturn(List.of(existing));
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of());
         service.getAlerts("admin@example.com");
         verify(alertRepository).save(existing);
@@ -175,16 +169,16 @@ class StockAlertServiceTest {
         Product official = product(1, "Official", 0, "OFFICIAL", null, true, "APPROVED");
         StockAlert alert = activeAlert(801, 1, StockAlert.OUT_OF_STOCK, 0);
         when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(admin));
-        when(productRepository.findByProId(1)).thenReturn(Optional.of(official));
+        when(productRepository.findByIdForUpdate(1)).thenReturn(Optional.of(official));
         when(alertRepository.findById(801)).thenReturn(Optional.of(alert));
         when(readRepository.findByAlertIdAndUserId(801, 1)).thenReturn(Optional.empty());
         service.markRead("admin@example.com", 801, true);
         verify(readRepository).save(any(StockAlertRead.class));
         service.markRead("admin@example.com", 801, false);
         verify(readRepository).deleteByAlertIdAndUserId(801, 1);
-        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(official));
+        when(productRepository.findOfficialStockForUpdate()).thenReturn(List.of(official));
         when(settingsRepository.findById(1)).thenReturn(Optional.empty());
-        when(alertRepository.findByProductId(1)).thenReturn(Optional.of(alert));
+        when(alertRepository.findByProductIdIn(List.of(1))).thenReturn(List.of(alert));
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of(alert));
         when(readRepository.findByUserIdAndAlertIdIn(anyInt(), any())).thenReturn(List.of());
         service.markAllRead("admin@example.com");
@@ -213,7 +207,7 @@ class StockAlertServiceTest {
 
         when(userRepository.findByEmail("seller@example.com")).thenReturn(Optional.of(seller));
         when(alertRepository.findById(301)).thenReturn(Optional.of(alert));
-        when(productRepository.findByProId(1)).thenReturn(Optional.of(product));
+        when(productRepository.findByIdForUpdate(1)).thenReturn(Optional.of(product));
         when(storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(7)).thenReturn(Optional.of(ownStore));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
