@@ -28,6 +28,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -154,7 +155,8 @@ public class StockAlertService {
             readsByAlertId.put(read.getAlertId(), read);
         }
         return activeAlerts.stream()
-                .sorted(Comparator.comparing(StockAlert::getActivatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .sorted(Comparator.comparing(StockAlert::getActivatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(StockAlert::getProductId))
                 .map(alert -> {
                     Product product = productsById.get(alert.getProductId());
                     StockAlertRead read = readsByAlertId.get(alert.getId());
@@ -207,6 +209,8 @@ public class StockAlertService {
         if (newActivation) {
             alert.setActivatedAt(LocalDateTime.now());
             alert.setResolvedAt(null);
+        } else if (Objects.equals(alert.getCurrentStock(), stock) && Objects.equals(alert.getThreshold(), threshold)) {
+            return;
         }
         alert.setAlertType(currentType);
         alert.setCurrentStock(stock);
