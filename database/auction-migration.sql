@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS auctions (
     auction_image_url TEXT,
     auction_description TEXT,
     auction_starting_price DECIMAL(10, 2) NOT NULL,
+    bid_increment DECIMAL(10, 2),
     auction_current_price DECIMAL(10, 2) NOT NULL,
     auction_bid_count INT NOT NULL DEFAULT 0,
     auction_starts_at TIMESTAMP NOT NULL,

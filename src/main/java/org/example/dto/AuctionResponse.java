@@ -67,9 +67,13 @@ public record AuctionResponse(
 
         @Schema(description = "Auction listing creation timestamp", example = "2026-11-10T08:30:00")
         LocalDateTime createdAt
-, Double bidIncrement, Integer checkoutHours, Integer antiSnipingMinutes, Integer productId, String cardCondition, String grading, java.util.List<String> evidenceImages
+, Double bidIncrement, Integer checkoutHours, Integer antiSnipingMinutes, Integer productId, String cardCondition, String grading, java.util.List<String> evidenceImages,
+        String productSet, String language
 ) {
  public AuctionResponse(Integer id, String title, String game, String type, String imageUrl, String description, Double startingPrice, Double currentPrice, Integer bidCount, LocalDateTime startsAt, LocalDateTime endsAt, LocalDateTime checkoutDeadline, String status, String source, Integer storeId, String storeName, Integer sellerUserId, Integer winningUserId, Integer leadingUserId, String reviewNote, LocalDateTime createdAt) {
-  this(id, title, game, type, imageUrl, description, startingPrice, currentPrice, bidCount, startsAt, endsAt, checkoutDeadline, status, source, storeId, storeName, sellerUserId, winningUserId, leadingUserId, reviewNote, createdAt,50d,24,5,null,null,null,java.util.List.of());
+ this(id, title, game, type, imageUrl, description, startingPrice, currentPrice, bidCount, startsAt, endsAt, checkoutDeadline, status, source, storeId, storeName, sellerUserId, winningUserId, leadingUserId, reviewNote, createdAt,50d,24,5,null,null,null,java.util.List.of(),null,null);
+ }
+ public AuctionResponse(Integer id, String title, String game, String type, String imageUrl, String description, Double startingPrice, Double currentPrice, Integer bidCount, LocalDateTime startsAt, LocalDateTime endsAt, LocalDateTime checkoutDeadline, String status, String source, Integer storeId, String storeName, Integer sellerUserId, Integer winningUserId, Integer leadingUserId, String reviewNote, LocalDateTime createdAt, Double bidIncrement, Integer checkoutHours, Integer antiSnipingMinutes, Integer productId, String cardCondition, String grading, java.util.List<String> evidenceImages) {
+  this(id,title,game,type,imageUrl,description,startingPrice,currentPrice,bidCount,startsAt,endsAt,checkoutDeadline,status,source,storeId,storeName,sellerUserId,winningUserId,leadingUserId,reviewNote,createdAt,bidIncrement,checkoutHours,antiSnipingMinutes,productId,cardCondition,grading,evidenceImages,null,null);
  }
 }

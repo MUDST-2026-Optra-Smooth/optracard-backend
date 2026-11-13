@@ -95,6 +95,8 @@ public class Auction {
     @Column(length=80) private String cardCondition;
     @Column(length=100) private String grading;
     @Column(columnDefinition="TEXT") private String evidenceImages;
+    @Column(name = "auction_product_set", length = 120) private String productSet;
+    @Column(name = "auction_language", length = 40) private String language;
 
     // Auction terms are fixed when a listing is created.
     private Double bidIncrement;
