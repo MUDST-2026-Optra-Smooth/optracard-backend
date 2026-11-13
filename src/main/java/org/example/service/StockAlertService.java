@@ -222,7 +222,7 @@ public class StockAlertService {
         String role = roleOf(user);
         if ("SELLER".equals(role)) {
             MarketplaceStore store = approvedStore(user);
-            return productRepository.findByStore_StoreIdOrderByProIdDesc(store.getStoreId());
+            return productRepository.findStoreStockForUpdate(store.getStoreId());
         }
         if ("ADMIN".equals(role)) {
             return productRepository.findOfficialStockForUpdate();

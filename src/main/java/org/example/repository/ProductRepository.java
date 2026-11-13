@@ -29,6 +29,10 @@ public interface ProductRepository extends JpaRepository<Product, Integer>, JpaS
             """)
     List<Product> findOfficialStockForUpdate();
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Product p where p.store.storeId = :storeId order by p.proId")
+    List<Product> findStoreStockForUpdate(@Param("storeId") Integer storeId);
+
 
     @Override
     @EntityGraph(attributePaths = {"cardGame", "store"})

@@ -68,7 +68,7 @@ class StockAlertServiceTest {
 
         when(userRepository.findByEmail("seller@example.com")).thenReturn(Optional.of(seller));
         when(storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(7)).thenReturn(Optional.of(ownStore));
-        when(productRepository.findByStore_StoreIdOrderByProIdDesc(11)).thenReturn(List.of(low, out));
+        when(productRepository.findStoreStockForUpdate(11)).thenReturn(List.of(low, out));
         when(storeSettingsRepository.findById(11)).thenReturn(Optional.empty());
         when(readRepository.findByUserIdAndAlertIdIn(anyInt(), any())).thenReturn(List.of());
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of(
