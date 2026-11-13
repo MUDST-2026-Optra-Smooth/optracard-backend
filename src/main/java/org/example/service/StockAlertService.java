@@ -23,7 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -116,7 +115,9 @@ public class StockAlertService {
         User user = currentUser(email);
         int threshold = validateThreshold(request == null ? null : request.defaultThreshold());
         String role = roleOf(user);
+        List<Product> products;
         if ("ADMIN".equals(role)) {
+            products = productRepository.findOfficialStockForUpdate();
             StockAlertSettings settings = settingsRepository.findById(StockAlertSettings.SETTINGS_ID)
                     .orElseGet(() -> {
                         StockAlertSettings created = new StockAlertSettings();
@@ -127,6 +128,7 @@ public class StockAlertService {
             settingsRepository.save(settings);
         } else if ("SELLER".equals(role)) {
             MarketplaceStore store = approvedStore(user);
+            products = productRepository.findStoreStockForUpdate(store.getStoreId());
             StockAlertStoreSettings settings = storeSettingsRepository.findById(store.getStoreId())
                     .orElseGet(() -> {
                         StockAlertStoreSettings created = new StockAlertStoreSettings();
@@ -138,6 +140,7 @@ public class StockAlertService {
         } else {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Stock alert settings are not available for this account");
         }
+        syncProducts(products, threshold);
         return new StockAlertSettingsResponse(threshold);
     }
 
@@ -177,8 +180,8 @@ public class StockAlertService {
                 alert.getActivatedAt(), alert.getUpdatedAt(), read);
     }
 
-    private void syncProducts(Collection<Product> products, int threshold) {
-        List<Integer> productIds = products.stream().map(Product::getProId).toList();
+    private void syncProducts(List<Product> products, int threshold) {
+        List<Integer> productIds = products.stream().map(Product::getProId).filter(Objects::nonNull).toList();
         if (productIds.isEmpty()) return;
         Map<Integer, StockAlert> alertsByProductId = alertRepository.findByProductIdIn(productIds).stream()
                 .collect(Collectors.toMap(StockAlert::getProductId, Function.identity()));
