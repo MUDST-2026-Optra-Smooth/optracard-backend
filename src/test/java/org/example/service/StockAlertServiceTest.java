@@ -5,6 +5,7 @@ import org.example.dto.StockAlertSettingsRequest;
 import org.example.model.MarketplaceStore;
 import org.example.model.Product;
 import org.example.model.StockAlert;
+import org.example.model.StockAlertRead;
 import org.example.model.User;
 import org.example.repository.MarketplaceStoreRepository;
 import org.example.repository.ProductRepository;
@@ -30,10 +31,12 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.atLeast;
 
 @ExtendWith(MockitoExtension.class)
 class StockAlertServiceTest {
@@ -145,6 +148,62 @@ class StockAlertServiceTest {
     }
 
     @Test
+    void thresholdValidationAndResolutionPathsAreHandled() {
+        User admin = user(1, "ADMIN");
+        when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(admin));
+        assertEquals(HttpStatus.BAD_REQUEST.value(), assertThrows(ResponseStatusException.class,
+                () -> service.updateSettings("admin@example.com", new StockAlertSettingsRequest(0))).getStatusCode().value());
+        assertEquals(HttpStatus.BAD_REQUEST.value(), assertThrows(ResponseStatusException.class,
+                () -> service.updateSettings("admin@example.com", new StockAlertSettingsRequest(100001))).getStatusCode().value());
+        assertEquals(HttpStatus.BAD_REQUEST.value(), assertThrows(ResponseStatusException.class,
+                () -> service.updateSettings("admin@example.com", null)).getStatusCode().value());
+
+        Product healthy = product(7, "Healthy", 20, "OFFICIAL", null, true, "APPROVED");
+        StockAlert existing = activeAlert(700, 7, StockAlert.LOW_STOCK, 2);
+        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(healthy));
+        when(settingsRepository.findById(1)).thenReturn(Optional.of(settings(5)));
+        when(alertRepository.findByProductId(7)).thenReturn(Optional.of(existing));
+        when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of());
+        service.getAlerts("admin@example.com");
+        verify(alertRepository).save(existing);
+        assertNotNull(existing.getResolvedAt());
+    }
+
+    @Test
+    void markReadAndMarkAllReadPersistAndDeleteReadStates() {
+        User admin = user(1, "ADMIN");
+        Product official = product(1, "Official", 0, "OFFICIAL", null, true, "APPROVED");
+        StockAlert alert = activeAlert(801, 1, StockAlert.OUT_OF_STOCK, 0);
+        when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(admin));
+        when(productRepository.findByProId(1)).thenReturn(Optional.of(official));
+        when(alertRepository.findById(801)).thenReturn(Optional.of(alert));
+        when(readRepository.findByAlertIdAndUserId(801, 1)).thenReturn(Optional.empty());
+        service.markRead("admin@example.com", 801, true);
+        verify(readRepository).save(any(StockAlertRead.class));
+        service.markRead("admin@example.com", 801, false);
+        verify(readRepository).deleteByAlertIdAndUserId(801, 1);
+        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(official));
+        when(settingsRepository.findById(1)).thenReturn(Optional.empty());
+        when(alertRepository.findByProductId(1)).thenReturn(Optional.of(alert));
+        when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of(alert));
+        when(readRepository.findByUserIdAndAlertIdIn(anyInt(), any())).thenReturn(List.of());
+        service.markAllRead("admin@example.com");
+        verify(readRepository, atLeast(2)).save(any(StockAlertRead.class));
+    }
+
+    @Test
+    void missingUsersProductsAndAlertsReturnExpectedErrors() {
+        when(userRepository.findByEmail("unknown@test")).thenReturn(Optional.empty());
+        assertEquals(HttpStatus.UNAUTHORIZED.value(), assertThrows(ResponseStatusException.class,
+                () -> service.getSettings("unknown@test")).getStatusCode().value());
+        User admin = user(1, "ADMIN");
+        when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(admin));
+        when(alertRepository.findById(999)).thenReturn(Optional.empty());
+        assertEquals(HttpStatus.NOT_FOUND.value(), assertThrows(ResponseStatusException.class,
+                () -> service.markRead("admin@example.com", 999, true)).getStatusCode().value());
+    }
+
+    @Test
     void markingAlertReadChecksSellerStoreOwnership() {
         User seller = user(7, "SELLER");
         MarketplaceStore ownStore = store(11, 7, "Own Store", "APPROVED");
@@ -204,5 +263,10 @@ class StockAlertServiceTest {
         alert.setActivatedAt(LocalDateTime.now().minusMinutes(1));
         alert.setUpdatedAt(LocalDateTime.now());
         return alert;
+    }
+
+    private org.example.model.StockAlertSettings settings(int threshold) {
+        org.example.model.StockAlertSettings settings = new org.example.model.StockAlertSettings();
+        settings.setId(1); settings.setDefaultThreshold(threshold); return settings;
     }
 }

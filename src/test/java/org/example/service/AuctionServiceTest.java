@@ -194,6 +194,61 @@ class AuctionServiceTest {
         verify(orderRepository, never()).save(any());
     }
 
+    @Test
+    void coversPublicFiltersSellerLifecycleAdminActionsAndValidationBranches() {
+        User seller = user(7, "SELLER");
+        User buyer = user(8, "USER");
+        User admin = user(99, "ADMIN");
+        when(userRepository.findByEmail("seller@example.test")).thenReturn(Optional.of(seller));
+        when(userRepository.findByEmail("buyer@example.test")).thenReturn(Optional.of(buyer));
+        when(userRepository.findByEmail("admin@example.test")).thenReturn(Optional.of(admin));
+
+        Auction live = auction(51, AuctionStatus.LIVE, 7, 100, 100, 0);
+        live.setSource("OFFICIAL");
+        when(auctionRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(live));
+        assertEquals(1, service.listPublic("", "official", "live").size());
+        assertThrows(ResponseStatusException.class, () -> service.getPublic(999));
+        when(auctionRepository.findById(51)).thenReturn(Optional.of(live));
+        assertEquals(51, service.getPublic(51).id());
+        when(bidRepository.findByAuction_AuctionIdOrderByCreatedAtDesc(51)).thenReturn(List.of());
+        assertEquals(0, service.bidHistory(51).size());
+        when(auctionRepository.findBySellerUserIdOrderByCreatedAtDesc(7)).thenReturn(List.of(live));
+        assertEquals(1, service.sellerAuctions("seller@example.test").size());
+        when(bidRepository.findFirstByAuction_AuctionIdAndBidderUserId(51, 8)).thenReturn(Optional.of(new AuctionBid()));
+        assertEquals(1, service.myAuctions("buyer@example.test").size());
+
+        Auction draft = auction(52, AuctionStatus.DRAFT, 7, 100, 100, 0);
+        when(auctionRepository.findByIdForUpdate(52)).thenReturn(Optional.of(draft));
+        when(cardGameRepository.existsById(1)).thenReturn(true);
+        assertEquals("PENDING_REVIEW", service.submitSellerAuction("seller@example.test", 52).status());
+
+        Auction pending = auction(53, AuctionStatus.PENDING_REVIEW, 7, 100, 100, 0);
+        when(auctionRepository.findByIdForUpdate(53)).thenReturn(Optional.of(pending));
+        assertEquals("PENDING_REVIEW", service.updateSellerAuction("seller@example.test", 53, request(2)).status());
+        Auction scheduled = auction(54, AuctionStatus.SCHEDULED, 7, 100, 100, 0);
+        when(auctionRepository.findByIdForUpdate(54)).thenReturn(Optional.of(scheduled));
+        assertEquals("CANCELLED", service.cancelSellerAuction("seller@example.test", 54).status());
+        Auction ended = auction(55, AuctionStatus.ENDED_NO_BIDS, 7, 100, 100, 0);
+        when(auctionRepository.findByIdForUpdate(55)).thenReturn(Optional.of(ended));
+        assertEquals("DRAFT", service.relistSellerAuction("seller@example.test", 55, request(2)).status());
+
+        Auction adminDraft = auction(58, AuctionStatus.DRAFT, 7, 100, 100, 0);
+        when(auctionRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(adminDraft, pending));
+        assertEquals(1, service.adminAuctions("DRAFT").size());
+        when(cardGameRepository.existsById(1)).thenReturn(true);
+        AuctionRequest future = new AuctionRequest("Official", 1, "Single", "", "detail", 100d, 50d, now().plusHours(2), now().plusHours(4), null, null, null, List.of(), null, null);
+        assertEquals("SCHEDULED", service.createOfficialAuction("admin@example.test", future).status());
+        Auction review = auction(56, AuctionStatus.PENDING_REVIEW, 7, 100, 100, 0);
+        when(auctionRepository.findByIdForUpdate(56)).thenReturn(Optional.of(review));
+        assertEquals("LIVE", service.reviewAuction("admin@example.test", 56, true, "").status());
+        Auction liveWithBid = auction(57, AuctionStatus.LIVE, 7, 100, 150, 1);
+        when(auctionRepository.findByIdForUpdate(57)).thenReturn(Optional.of(liveWithBid));
+        assertEquals("CANCELLED", service.cancelByAdmin("admin@example.test", 57, "policy").status());
+
+        assertThrows(ResponseStatusException.class, () -> service.placeBid("buyer@example.test", 51, null));
+        assertThrows(ResponseStatusException.class, () -> service.placeBid("admin@example.test", 51, new AuctionBidRequest(200d)));
+    }
+
     private AuctionRequest request(int days) {
         LocalDateTime start = now().plusMinutes(5);
         return new AuctionRequest("E2E Test Card", 1, "Single", "", "Mint", 500d, start, start.plusDays(days));

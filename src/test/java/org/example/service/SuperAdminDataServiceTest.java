@@ -219,4 +219,30 @@ class SuperAdminDataServiceTest {
         verify(userRepository).delete(regularUser);
         verify(userRepository).flush();
     }
+
+    @Test
+    void readCatalogTransactionsUsersAndStaff_filtersAndMapsRows() {
+        MarketplaceStore store = new MarketplaceStore();
+        store.setStoreId(4); store.setStoreName("Cards"); store.setSellerUserId(8); store.setStoreStatus("APPROVED");
+        store.setDistrict("Pathum Wan"); store.setProvince("Bangkok");
+        User seller = new User(); seller.setUaId(8); seller.setUsername("seller"); seller.setEmail("seller@test"); seller.setRole("SELLER");
+        User admin = new User(); admin.setUaId(9); admin.setUsername("admin"); admin.setEmail("admin@test"); admin.setRole("ADMIN");
+        User buyer = new User(); buyer.setUaId(10); buyer.setUsername("buyer"); buyer.setEmail("buyer@test"); buyer.setRole("USER");
+        Product marketplace = new Product(); marketplace.setProId(1); marketplace.setProName("Card"); marketplace.setListingSource("MARKETPLACE"); marketplace.setApprovalStatus("APPROVED"); marketplace.setIsActive(true); marketplace.setProQuantity(2); marketplace.setStore(store);
+        Product hidden = new Product(); hidden.setProId(2); hidden.setProName("Hidden"); hidden.setListingSource("OFFICIAL"); hidden.setApprovalStatus("PENDING"); hidden.setIsActive(false); hidden.setProQuantity(null);
+        Order order = new Order(); order.setOrderId(3); order.setUserId(10); order.setStoreId(4); order.setTotalPrice(120d); order.setPaymentStatus("PAID"); order.setCreatedAt(LocalDateTime.now());
+        when(storeRepository.findAll()).thenReturn(List.of(store));
+        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(marketplace, hidden));
+        when(orderRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(order));
+        when(userRepository.findAll()).thenReturn(List.of(seller, admin, buyer));
+        assertEquals(2, service.getCatalog().size());
+        assertEquals(1, service.getTransactions().size());
+        assertEquals(2, service.getUsers().size());
+        assertEquals(1, service.getStaff().size());
+        when(storeRepository.findByStoreId(4)).thenReturn(Optional.of(store));
+        when(productRepository.findByStore_StoreIdOrderByProIdDesc(4)).thenReturn(List.of(marketplace));
+        when(orderRepository.findByStoreIdOrderByCreatedAtDesc(4)).thenReturn(List.of(order));
+        assertEquals("Pathum Wan, Bangkok", service.getStore(4).location());
+        assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class, () -> service.getStore(99)).getStatusCode());
+    }
 }

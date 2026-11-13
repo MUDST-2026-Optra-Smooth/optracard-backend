@@ -144,4 +144,54 @@ class LocalCatalogSeederTest {
                 storeCaptor.getAllValues().stream().map(MarketplaceStore::getStoreStatus).toList());
         verifyNoInteractions(auctionRepository);
     }
+
+    @Test
+    @DisplayName("Seeds the complete local catalog when the database is empty")
+    void run_whenDatabaseIsEmpty_seedsGamesStoresAndProducts() {
+        Map<String, CardGame> games = new HashMap<>();
+        AtomicInteger gameId = new AtomicInteger(1);
+        when(cardGameRepository.findByGameName(anyString())).thenAnswer(invocation ->
+                Optional.ofNullable(games.get(invocation.getArgument(0))));
+        when(cardGameRepository.save(any(CardGame.class))).thenAnswer(invocation -> {
+            CardGame game = invocation.getArgument(0);
+            game.setGameId(gameId.getAndIncrement());
+            games.put(game.getGameName(), game);
+            return game;
+        });
+
+        Map<String, User> users = new HashMap<>();
+        AtomicInteger userId = new AtomicInteger(1);
+        when(userRepository.findByEmail(anyString())).thenAnswer(invocation ->
+                Optional.ofNullable(users.get(invocation.getArgument(0))));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User user = invocation.getArgument(0);
+            if (user.getUaId() == null) user.setUaId(userId.getAndIncrement());
+            users.put(user.getEmail(), user);
+            return user;
+        });
+
+        Map<String, MarketplaceStore> stores = new HashMap<>();
+        AtomicInteger storeId = new AtomicInteger(100);
+        when(marketplaceStoreRepository.findByStoreSlug(anyString())).thenAnswer(invocation ->
+                Optional.ofNullable(stores.get(invocation.getArgument(0))));
+        when(marketplaceStoreRepository.save(any(MarketplaceStore.class))).thenAnswer(invocation -> {
+            MarketplaceStore store = invocation.getArgument(0);
+            if (store.getStoreId() == null) store.setStoreId(storeId.getAndIncrement());
+            stores.put(store.getStoreSlug(), store);
+            return store;
+        });
+
+        when(productRepository.existsByProNameAndListingSource(anyString(), anyString())).thenReturn(false);
+        when(productRepository.existsByProNameAndListingSourceAndStore_StoreId(anyString(), anyString(), anyInt())).thenReturn(false);
+        when(productRepository.findAll()).thenReturn(Collections.emptyList());
+        when(productRepository.findByListingSourceOrderByProIdDesc(anyString())).thenReturn(Collections.emptyList());
+        when(orderRepository.findAll()).thenReturn(Collections.emptyList());
+
+        seeder.run(null);
+
+        verify(cardGameRepository, times(4)).save(any(CardGame.class));
+        verify(userRepository, times(4)).save(any(User.class));
+        verify(marketplaceStoreRepository, times(4)).save(any(MarketplaceStore.class));
+        verify(productRepository, atLeast(20)).save(any(Product.class));
+    }
 }
