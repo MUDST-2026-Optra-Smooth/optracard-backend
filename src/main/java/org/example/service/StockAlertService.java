@@ -26,10 +26,10 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class StockAlertService {
@@ -176,15 +176,20 @@ public class StockAlertService {
     }
 
     private void syncProducts(Collection<Product> products, int threshold) {
-        for (Product product : products) syncProduct(product, threshold);
+        List<Integer> productIds = products.stream().map(Product::getProId).toList();
+        if (productIds.isEmpty()) return;
+        Map<Integer, StockAlert> alertsByProductId = alertRepository.findByProductIdIn(productIds).stream()
+                .collect(Collectors.toMap(StockAlert::getProductId, Function.identity()));
+        for (Product product : products) {
+            syncProduct(product, threshold, alertsByProductId.get(product.getProId()));
+        }
     }
 
-    private void syncProduct(Product product, int threshold) {
+    private void syncProduct(Product product, int threshold, StockAlert alert) {
         if (product.getProId() == null) return;
         int stock = integer(product.getProQuantity());
         String currentType = stock == 0 ? StockAlert.OUT_OF_STOCK
                 : stock <= threshold ? StockAlert.LOW_STOCK : null;
-        StockAlert alert = alertRepository.findByProductId(product.getProId()).orElse(null);
         if (currentType == null) {
             if (alert != null && alert.getResolvedAt() == null) {
                 alert.setResolvedAt(LocalDateTime.now());

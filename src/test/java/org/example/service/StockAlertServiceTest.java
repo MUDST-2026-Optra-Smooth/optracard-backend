@@ -70,7 +70,6 @@ class StockAlertServiceTest {
         when(storeRepository.findFirstBySellerUserIdOrderByStoreIdDesc(7)).thenReturn(Optional.of(ownStore));
         when(productRepository.findByStore_StoreIdOrderByProIdDesc(11)).thenReturn(List.of(low, out));
         when(storeSettingsRepository.findById(11)).thenReturn(Optional.empty());
-        when(alertRepository.findByProductId(anyInt())).thenReturn(Optional.empty());
         when(readRepository.findByUserIdAndAlertIdIn(anyInt(), any())).thenReturn(List.of());
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of(
                 activeAlert(101, 1, StockAlert.LOW_STOCK, 2),
@@ -96,7 +95,6 @@ class StockAlertServiceTest {
         when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(admin));
         when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(official, marketplace, pending, inactive));
         when(settingsRepository.findById(1)).thenReturn(Optional.empty());
-        when(alertRepository.findByProductId(anyInt())).thenReturn(Optional.empty());
         when(readRepository.findByUserIdAndAlertIdIn(anyInt(), any())).thenReturn(List.of());
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of(
                 activeAlert(201, 1, StockAlert.LOW_STOCK, 1)
@@ -162,7 +160,7 @@ class StockAlertServiceTest {
         StockAlert existing = activeAlert(700, 7, StockAlert.LOW_STOCK, 2);
         when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(healthy));
         when(settingsRepository.findById(1)).thenReturn(Optional.of(settings(5)));
-        when(alertRepository.findByProductId(7)).thenReturn(Optional.of(existing));
+        when(alertRepository.findByProductIdIn(List.of(7))).thenReturn(List.of(existing));
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of());
         service.getAlerts("admin@example.com");
         verify(alertRepository).save(existing);
@@ -184,7 +182,7 @@ class StockAlertServiceTest {
         verify(readRepository).deleteByAlertIdAndUserId(801, 1);
         when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(official));
         when(settingsRepository.findById(1)).thenReturn(Optional.empty());
-        when(alertRepository.findByProductId(1)).thenReturn(Optional.of(alert));
+        when(alertRepository.findByProductIdIn(List.of(1))).thenReturn(List.of(alert));
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of(alert));
         when(readRepository.findByUserIdAndAlertIdIn(anyInt(), any())).thenReturn(List.of());
         service.markAllRead("admin@example.com");
