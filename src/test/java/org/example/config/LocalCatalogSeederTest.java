@@ -97,6 +97,7 @@ class LocalCatalogSeederTest {
         assertEquals("PAID", pendingOrder.getPaymentStatus());
         verify(orderRepository).saveAll(List.of(pendingOrder));
         verify(productRepository, never()).save(any(Product.class));
+        verifyNoInteractions(auctionRepository);
     }
 
     @Test
@@ -141,5 +142,6 @@ class LocalCatalogSeederTest {
         verify(marketplaceStoreRepository, times(4)).save(storeCaptor.capture());
         assertEquals(List.of("APPROVED", "APPROVED", "APPROVED", "APPROVED"),
                 storeCaptor.getAllValues().stream().map(MarketplaceStore::getStoreStatus).toList());
+        verifyNoInteractions(auctionRepository);
     }
 }

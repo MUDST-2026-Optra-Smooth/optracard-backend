@@ -119,6 +119,22 @@ class AuctionServiceTest {
     }
 
     @Test
+    void bidUsesTheIncrementConfiguredOnItsAuction() {
+        Auction auction = auction(44, AuctionStatus.LIVE, 7, 1_000d, 1_200d, 1);
+        auction.setBidIncrement(125d);
+        User buyer = user(8, "USER");
+        when(userRepository.findByEmail("buyer@example.test")).thenReturn(Optional.of(buyer));
+        when(auctionRepository.findByIdForUpdate(44)).thenReturn(Optional.of(auction));
+
+        ResponseStatusException tooSmall = assertThrows(ResponseStatusException.class,
+                () -> service.placeBid("buyer@example.test", 44, new AuctionBidRequest(1_324d)));
+        assertEquals(HttpStatus.BAD_REQUEST, tooSmall.getStatusCode());
+
+        var bid = service.placeBid("buyer@example.test", 44, new AuctionBidRequest(1_325d));
+        assertEquals(1_325d, bid.amount());
+    }
+
+    @Test
     void lifecycleSelectsHighestEarliestBidderAndExpiresCheckoutWindow() {
         Auction auction = auction(42, AuctionStatus.LIVE, 7, 500d, 750d, 2);
         auction.setEndsAt(now().minusMinutes(1));

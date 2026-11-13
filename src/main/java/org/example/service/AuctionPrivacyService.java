@@ -22,6 +22,6 @@ public class AuctionPrivacyService {
         return new AuctionResponse(a.id(),a.title(),a.game(),a.type(),a.imageUrl(),a.description(),
             a.startingPrice(),a.currentPrice(),a.bidCount(),a.startsAt(),a.endsAt(),
             related || winner != null ? a.checkoutDeadline() : null,a.status(),a.source(),a.storeId(),a.storeName(),
-            a.sellerUserId(),winner,leader,related ? a.reviewNote() : null,a.createdAt(),a.bidIncrement(),a.checkoutHours(),a.antiSnipingMinutes(),a.productId(),a.cardCondition(),a.grading(),a.evidenceImages());
+            a.sellerUserId(),winner,leader,related ? a.reviewNote() : null,a.createdAt(),a.bidIncrement(),a.checkoutHours(),a.antiSnipingMinutes(),a.productId(),a.cardCondition(),a.grading(),a.evidenceImages(),a.productSet(),a.language());
     }
 }

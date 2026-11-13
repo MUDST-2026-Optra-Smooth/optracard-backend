@@ -423,7 +423,9 @@ public class AuctionService {
 
     private void apply(Auction auction, AuctionRequest request) {
         if (request == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Auction data is required");
-        if (auction.getBidIncrement() == null) {
+        if (request.bidIncrement() != null) {
+            auction.setBidIncrement(validateBidIncrement(request.bidIncrement()));
+        } else if (auction.getBidIncrement() == null) {
             var settings = operations == null ? new org.example.model.AuctionSettings() : operations.settings();
             auction.setBidIncrement(settings.getBidIncrement()); auction.setCheckoutHours(settings.getCheckoutHours());
             auction.setAntiSnipingMinutes(settings.getAntiSnipingMinutes());
@@ -441,6 +443,8 @@ public class AuctionService {
         auction.setType(blankToNull(request.type()));
         auction.setImageUrl(blankToNull(request.imageUrl()));
         auction.setDescription(blankToNull(request.description()));
+        auction.setProductSet(blankToNull(request.productSet()));
+        auction.setLanguage(blankToNull(request.language()));
         auction.setStartingPrice(roundMoney(request.startingPrice()));
         auction.setCurrentPrice(roundMoney(request.startingPrice()));
         auction.setBidCount(0);
@@ -546,7 +550,7 @@ public class AuctionService {
                 auction.getBidCount(), auction.getStartsAt(), auction.getEndsAt(), auction.getCheckoutDeadline(), auction.getStatus(),
                 auction.getSource(), store == null ? null : store.getStoreId(),
                 store == null ? "Optracard Official Store" : store.getStoreName(), auction.getSellerUserId(),
-                auction.getWinningUserId(), leadingUserId, auction.getReviewNote(), auction.getCreatedAt(), increment(auction),checkoutHours(auction),antiSniping(auction),auction.getProductId(),auction.getCardCondition(),auction.getGrading(),auction.getEvidenceImages()==null||auction.getEvidenceImages().isBlank()?List.of():List.of(auction.getEvidenceImages().split("\\n")));
+                auction.getWinningUserId(), leadingUserId, auction.getReviewNote(), auction.getCreatedAt(), increment(auction),checkoutHours(auction),antiSniping(auction),auction.getProductId(),auction.getCardCondition(),auction.getGrading(),auction.getEvidenceImages()==null||auction.getEvidenceImages().isBlank()?List.of():List.of(auction.getEvidenceImages().split("\\n")),auction.getProductSet(),auction.getLanguage());
     }
 
     private AuctionBidResponse toBidResponse(AuctionBid bid) {
@@ -554,6 +558,14 @@ public class AuctionService {
     }
 
     private double increment(Auction a) {return a.getBidIncrement()==null?50d:a.getBidIncrement();}
+    private double validateBidIncrement(Double value) {
+        if (!Double.isFinite(value) || value <= 0 || value > 1_000_000d
+                || java.math.BigDecimal.valueOf(value).stripTrailingZeros().scale() > 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Minimum bid increment must be greater than zero and use at most two decimal places");
+        }
+        return roundMoney(value);
+    }
     private int checkoutHours(Auction a) {return a.getCheckoutHours()==null?24:a.getCheckoutHours();}
     private int antiSniping(Auction a) {return a.getAntiSnipingMinutes()==null?5:a.getAntiSnipingMinutes();}
     private String snapshot(Auction a) {return operations==null?"":operations.snapshot(a);}
