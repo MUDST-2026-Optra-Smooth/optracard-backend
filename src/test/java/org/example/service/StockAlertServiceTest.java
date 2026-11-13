@@ -86,14 +86,10 @@ class StockAlertServiceTest {
     @Test
     void adminSeesOfficialAlertsOnly() {
         User admin = user(1, "ADMIN");
-        MarketplaceStore store = store(11, 7, "Approved Store", "APPROVED");
         Product official = product(1, "Official", 1, "OFFICIAL", null, true, "APPROVED");
-        Product marketplace = product(2, "Marketplace", 3, "MARKETPLACE", store, true, "APPROVED");
-        Product pending = product(3, "Pending", 1, "MARKETPLACE", store, true, "PENDING");
-        Product inactive = product(4, "Inactive", 1, "OFFICIAL", null, false, "APPROVED");
 
         when(userRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(admin));
-        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(official, marketplace, pending, inactive));
+        when(productRepository.findOfficialStockForUpdate()).thenReturn(List.of(official));
         when(settingsRepository.findById(1)).thenReturn(Optional.empty());
         when(readRepository.findByUserIdAndAlertIdIn(anyInt(), any())).thenReturn(List.of());
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of(
@@ -158,7 +154,7 @@ class StockAlertServiceTest {
 
         Product healthy = product(7, "Healthy", 20, "OFFICIAL", null, true, "APPROVED");
         StockAlert existing = activeAlert(700, 7, StockAlert.LOW_STOCK, 2);
-        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(healthy));
+        when(productRepository.findOfficialStockForUpdate()).thenReturn(List.of(healthy));
         when(settingsRepository.findById(1)).thenReturn(Optional.of(settings(5)));
         when(alertRepository.findByProductIdIn(List.of(7))).thenReturn(List.of(existing));
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of());
@@ -180,7 +176,7 @@ class StockAlertServiceTest {
         verify(readRepository).save(any(StockAlertRead.class));
         service.markRead("admin@example.com", 801, false);
         verify(readRepository).deleteByAlertIdAndUserId(801, 1);
-        when(productRepository.findAllByOrderByProIdDesc()).thenReturn(List.of(official));
+        when(productRepository.findOfficialStockForUpdate()).thenReturn(List.of(official));
         when(settingsRepository.findById(1)).thenReturn(Optional.empty());
         when(alertRepository.findByProductIdIn(List.of(1))).thenReturn(List.of(alert));
         when(alertRepository.findByResolvedAtIsNullAndProductIdIn(any())).thenReturn(List.of(alert));

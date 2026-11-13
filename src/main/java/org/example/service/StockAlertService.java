@@ -225,9 +225,7 @@ public class StockAlertService {
             return productRepository.findByStore_StoreIdOrderByProIdDesc(store.getStoreId());
         }
         if ("ADMIN".equals(role)) {
-            return productRepository.findAllByOrderByProIdDesc().stream()
-                    .filter(this::isAdminVisible)
-                    .toList();
+            return productRepository.findOfficialStockForUpdate();
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Stock alerts are not available for this account");
     }
